@@ -103,7 +103,7 @@ Der Hub hat vier Bereiche: **Medien**, **Verein**, **Mitglieder** und **Finanzen
 
 **Neuen Zugang anlegen:** Unter **Mitglieder** bei der Person auf **Zugang anlegen** klicken (oder unter **Konten > + Zugang**). Der Hub erzeugt einen **Einladungslink** (14 Tage gültig), den du z. B. per WhatsApp schickst. Damit legt die Person ihr Passwort selbst fest und kann danach ihr eigenes Profil pflegen.
 
-Passwort vergessen: Admin klickt beim Konto auf **Neuer Einladungslink**.
+Passwort vergessen: Auf der Anmeldeseite **Passwort vergessen?** anklicken, Benutzername oder E-Mail eingeben, dann kommt ein Link per Mail (60 Minuten gültig). Voraussetzung: Der E-Mail-Versand ist eingerichtet und beim Konto (oder im verknüpften Mitgliedsprofil) ist eine E-Mail-Adresse hinterlegt. Sonst klickt der Admin beim Konto auf **Neuer Einladungslink**.
 
 Notfall (Admin-Passwort vergessen): in der `.env` `TMH_RESET_PASSWORD=1` und ein neues `TMH_ADMIN_PASSWORD` setzen, `docker compose up -d`, danach wieder auf `0` stellen. Oder auf der Kommandozeile:
 ```

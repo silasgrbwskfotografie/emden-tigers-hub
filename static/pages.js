@@ -1599,6 +1599,8 @@ App.pages.profile = async (view) => {
       <div class="card"><h2>Konto</h2>
         <div class="form">
           <div class="field full"><label>Anzeigename</label><input class="input" id="pf_dn" value="${esc(prof.account.display_name || '')}"></div>
+          <div class="field full"><label for="pf_acc_email">E-Mail-Adresse</label><input class="input" id="pf_acc_email" type="email" value="${esc(prof.account.email || m?.email || '')}" placeholder="name@beispiel.de">
+            <div class="hint">Für „Passwort vergessen“ bei der Anmeldung und für Benachrichtigungen.</div></div>
         </div>
         <div class="btn-row" style="margin-top:10px"><button class="btn" id="pf_dn_save">Speichern</button></div>
         <h3 style="margin-top:22px">Passwort ändern</h3>
@@ -1634,17 +1636,22 @@ App.pages.profile = async (view) => {
     </div>
     ${prof.notify_kinds.length ? `<div class="card" style="margin-top:16px"><h2>Benachrichtigungen per E-Mail</h2>
       ${prof.mail_ready ? '' : '<div class="warnline" style="margin-bottom:8px">Der E-Mail-Versand ist noch nicht eingerichtet (Admin: Einstellungen). Deine Auswahl gilt, sobald er läuft.</div>'}
-      <div class="form"><div class="field full"><label for="nf_email">E-Mail-Adresse für Benachrichtigungen</label>
-        <input class="input" id="nf_email" type="email" value="${esc(prof.account.email || m?.email || '')}" placeholder="name@beispiel.de"></div>
+      <p class="muted small">Die Mails gehen an die E-Mail-Adresse oben bei „Konto“.</p>
+      <div class="form">
         ${prof.notify_kinds.map(k => `<div class="field full"><label class="check"><input type="checkbox" data-nf="${k.key}" ${(() => { try { return JSON.parse(prof.account.notify || '[]'); } catch { return []; } })().includes(k.key) ? 'checked' : ''}> ${esc(k.label)}</label></div>`).join('')}</div>
       <div class="btn-row" style="margin-top:10px"><button class="btn" id="nf_save">Benachrichtigungen speichern</button></div></div>` : ''}`;
   if ($('#nf_save')) $('#nf_save').onclick = async () => {
     try {
-      await api('profile', 'PUT', { notify_email: $('#nf_email').value.trim(), notify: $$('[data-nf]').filter(c => c.checked).map(c => c.dataset.nf) });
+      if (!$('#pf_acc_email').value.trim() && $$('[data-nf]').some(c => c.checked)) return alert('Bitte oben bei „Konto“ zuerst eine E-Mail-Adresse eintragen und speichern.');
+      await api('profile', 'PUT', { account_email: $('#pf_acc_email').value.trim(), notify: $$('[data-nf]').filter(c => c.checked).map(c => c.dataset.nf) });
       toast('Benachrichtigungen gespeichert');
     } catch (e) { alert(e.message); }
   };
-  $('#pf_dn_save').onclick = async () => { await api('profile', 'PUT', { display_name: $('#pf_dn').value }); App.me = await api('me'); renderSideFoot(); toast('Gespeichert'); };
+  $('#pf_dn_save').onclick = async () => {
+    try { await api('profile', 'PUT', { display_name: $('#pf_dn').value, account_email: $('#pf_acc_email').value.trim() }); }
+    catch (e) { return alert(e.message); }
+    App.me = await api('me'); renderSideFoot(); toast('Gespeichert');
+  };
   $('#pw_save').onclick = async () => {
     if ($('#pw_new').value !== $('#pw_new2').value) return alert('Die neuen Passwörter stimmen nicht überein.');
     try { await api('me/password', 'PUT', { old: $('#pw_old').value, new: $('#pw_new').value }); toast('Passwort geändert'); $('#pw_form').reset(); }

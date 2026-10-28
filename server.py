@@ -46,7 +46,7 @@ from urllib.parse import urlparse, unquote, parse_qs, urlencode
 import urllib.request
 import urllib.error
 
-VERSION = "3.8"
+VERSION = "3.9"
 APP_NAME = "Emden Tigers Hub"
 ENV = os.environ.get
 HOST = ENV("TMH_HOST", "127.0.0.1")
@@ -410,7 +410,8 @@ def init_db():
                      "created_at TEXT, ip TEXT, user_agent TEXT)")
         ucols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
         for c, t in (("display_name", "TEXT"), ("email", "TEXT"), ("is_admin", "INTEGER DEFAULT 0"), ("active", "INTEGER DEFAULT 1"),
-                     ("member_id", "INTEGER"), ("invite_hash", "TEXT"), ("invite_expires", "REAL"), ("notify", "TEXT")):
+                     ("member_id", "INTEGER"), ("invite_hash", "TEXT"), ("invite_expires", "REAL"), ("notify", "TEXT"),
+                     ("reset_hash", "TEXT"), ("reset_expires", "REAL")):
             if c not in ucols:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {c} {t}")
         if "role" in ucols:
@@ -598,6 +599,64 @@ def login_blocked(ip):
 def login_failed(ip):
     with FAILED_LOCK:
         FAILED_LOGINS.setdefault(ip, []).append(time.time())
+
+
+# ---------------------------------------------------------------------------
+# Passwort vergessen: Link per E-Mail (60 Minuten gültig, nur einmal, nur der Hash wird gespeichert)
+# ---------------------------------------------------------------------------
+RESET_MINUTES = 60
+RESET_HITS = {}          # "ip:..." bzw. "user:..." -> Zeitpunkte der Anfragen
+RESET_LIMITS = {"ip": 10, "user": 3}   # pro Stunde
+
+
+def reset_rate_ok(kind, key):
+    with FAILED_LOCK:
+        now = time.time()
+        k = f"{kind}:{key}"
+        hits = [t for t in RESET_HITS.get(k, []) if now - t < 3600]
+        ok = len(hits) < RESET_LIMITS[kind]
+        if ok:
+            hits.append(now)
+        RESET_HITS[k] = hits
+        return ok
+
+
+def account_email(conn, u):
+    """E-Mail des Kontos, sonst die des verknüpften Mitglieds."""
+    if u["email"]:
+        return u["email"]
+    if u["member_id"]:
+        m = conn.execute("SELECT email FROM members WHERE id=?", (u["member_id"],)).fetchone()
+        return (m["email"] or "").strip() if m else ""
+    return ""
+
+
+def request_password_reset(login, base_url):
+    """Sucht das Konto zu Benutzername oder E-Mail und schickt den Link. Gibt nach außen nie preis, ob es das Konto gibt."""
+    login = (login or "").strip()
+    if not login:
+        return
+    with db() as conn:
+        u = conn.execute("SELECT * FROM users WHERE active=1 AND username=? COLLATE NOCASE", (login,)).fetchone()
+        if not u and "@" in login:
+            u = conn.execute("SELECT * FROM users WHERE active=1 AND lower(email)=lower(?)", (login,)).fetchone() or conn.execute(
+                "SELECT u.* FROM users u JOIN members m ON m.id = u.member_id WHERE u.active=1 AND lower(m.email)=lower(?)", (login,)).fetchone()
+        if not u:
+            return
+        email = account_email(conn, u)
+        if not email or not reset_rate_ok("user", u["id"]):
+            return
+        tok = secrets.token_urlsafe(32)
+        conn.execute("UPDATE users SET reset_hash=?, reset_expires=? WHERE id=?", (token_hash(tok), time.time() + RESET_MINUTES * 60, u["id"]))
+        audit(conn, "Passwort vergessen", "Link angefordert", "users", u["id"], u["display_name"] or u["username"])
+    cfg = smtp_config()
+    if not cfg["smtp_host"]:
+        return
+    link = f"{cfg['hub_url'] or base_url}/passwort-neu/{tok}"
+    body = (f"Hallo {u['display_name'] or u['username']},\n\nfür dein Konto im Emden Tigers Hub (Benutzername: {u['username']}) wurde ein neues Passwort angefordert.\n"
+            f"Über diesen Link legst du es fest. Er gilt {RESET_MINUTES} Minuten und funktioniert nur einmal:\n\n{link}\n\n"
+            "Wenn du das nicht warst, ignoriere diese Mail einfach. Dein bisheriges Passwort bleibt dann gültig.")
+    threading.Thread(target=lambda: send_mail(cfg, email, "Tigers Hub: Passwort zurücksetzen", body, footer=False), daemon=True).start()
 
 
 # ---------------------------------------------------------------------------
@@ -1094,7 +1153,7 @@ def smtp_config():
     return cfg
 
 
-def send_mail(cfg, to, subject, body):
+def send_mail(cfg, to, subject, body, footer=True):
     """Schickt eine Klartext-Mail. Liefert None oder eine Fehlermeldung."""
     import smtplib
     import ssl
@@ -1103,8 +1162,8 @@ def send_mail(cfg, to, subject, body):
     msg["From"] = cfg["smtp_from"] or cfg["smtp_user"]
     msg["To"] = to
     msg["Subject"] = subject
-    msg.set_content(body + (f"\n\nZum Hub: {cfg['hub_url']}" if cfg["hub_url"] else "") +
-                    "\n\nWelche Nachrichten du bekommst, stellst du im Hub unter „Mein Profil“ ein.")
+    msg.set_content(body + ((f"\n\nZum Hub: {cfg['hub_url']}" if cfg["hub_url"] else "") +
+                            "\n\nWelche Nachrichten du bekommst, stellst du im Hub unter „Mein Profil“ ein." if footer else ""))
     try:
         port = int(cfg["smtp_port"] or (465 if cfg["smtp_security"] == "ssl" else 587))
         ctx = ssl.create_default_context()
@@ -2032,6 +2091,16 @@ class Handler(BaseHTTPRequestHandler):
                                   .replace("%%USER%%", html_esc(u["username"])).replace("%%TOKEN%%", html_esc(p[1])))
         if head == "auth":
             return self.api_auth(method, p[1:])
+        if head == "passwort-vergessen" and method == "GET":
+            return self.send_html(FORGOT_SENT_PAGE if p[1:] == ["gesendet"] else FORGOT_PAGE)
+        if head == "passwort-neu" and method == "GET" and len(p) == 2:
+            with db() as conn:
+                u = conn.execute("SELECT username, display_name FROM users WHERE reset_hash=? AND reset_expires > ? AND active=1",
+                                 (token_hash(p[1]), time.time())).fetchone()
+            if not u:
+                return self.send_html(INVALID_RESET_PAGE, 404)
+            return self.send_html(RESET_PAGE.replace("%%NAME%%", html_esc(u["display_name"] or u["username"]))
+                                  .replace("%%USER%%", html_esc(u["username"])).replace("%%TOKEN%%", html_esc(p[1])))
         if head == "bestellen":
             return self.public_order(method, p[1:])
         if head == "teilen" and method == "GET" and len(p) == 3:
@@ -2122,6 +2191,43 @@ class Handler(BaseHTTPRequestHandler):
             with db() as conn:
                 conn.execute("UPDATE users SET pw_hash=?, invite_hash=NULL, invite_expires=NULL WHERE id=?", (hash_pw(data["password"]), u["id"]))
                 conn.execute("DELETE FROM sessions WHERE user_id=?", (u["id"],))
+            tok2 = self.start_session(u["id"])
+            body = json.dumps({"ok": True}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Set-Cookie", self.cookie_header(tok2, SESSION_DAYS * 86400))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if name == "forgot":
+            # Immer dieselbe Antwort, egal ob es das Konto gibt (keine Auskunft über Konten)
+            if reset_rate_ok("ip", self.client_ip()):
+                request_password_reset(self.read_json().get("login"), self.base_url())
+            time.sleep(0.4)
+            return self.send_json({"ok": True})
+        if name == "reset":
+            data = self.read_json()
+            tok = data.get("token") or ""
+            with db() as conn:
+                u = conn.execute("SELECT * FROM users WHERE reset_hash=? AND reset_expires > ? AND active=1", (token_hash(tok), time.time())).fetchone()
+            if not u:
+                return self.send_json({"error": "Der Link ist ungültig oder abgelaufen. Bitte unter „Passwort vergessen“ einen neuen anfordern."}, 400)
+            prob = pw_problem(data.get("password") or "")
+            if prob:
+                return self.send_json({"error": prob}, 400)
+            with db() as conn:
+                conn.execute("UPDATE users SET pw_hash=?, reset_hash=NULL, reset_expires=NULL, invite_hash=NULL, invite_expires=NULL WHERE id=?",
+                             (hash_pw(data["password"]), u["id"]))
+                conn.execute("DELETE FROM sessions WHERE user_id=?", (u["id"],))   # überall abmelden
+                audit(conn, "Passwort vergessen", "Passwort per Link neu gesetzt", "users", u["id"], u["display_name"] or u["username"])
+                email = account_email(conn, u)
+            cfg = smtp_config()
+            if email and cfg["smtp_host"]:
+                body = (f"Hallo {u['display_name'] or u['username']},\n\ndas Passwort für dein Konto im Emden Tigers Hub (Benutzername: {u['username']}) "
+                        f"wurde gerade über „Passwort vergessen“ geändert ({datetime.now():%d.%m.%Y %H:%M}).\n\n"
+                        "Warst du das nicht? Dann melde dich bitte sofort beim Vorstand bzw. Admin.")
+                threading.Thread(target=lambda: send_mail(cfg, email, "Tigers Hub: Dein Passwort wurde geändert", body, footer=False), daemon=True).start()
             tok2 = self.start_session(u["id"])
             body = json.dumps({"ok": True}).encode()
             self.send_response(200)
@@ -2246,7 +2352,7 @@ class Handler(BaseHTTPRequestHandler):
                     if prob:
                         return self.send_json({"error": prob}, 400)
                     with db() as conn:
-                        conn.execute("UPDATE users SET pw_hash=? WHERE id=?", (hash_pw(data["new"]), user["id"]))
+                        conn.execute("UPDATE users SET pw_hash=?, reset_hash=NULL, reset_expires=NULL WHERE id=?", (hash_pw(data["new"]), user["id"]))
                         conn.execute("DELETE FROM sessions WHERE user_id=? AND token_hash != ?", (user["id"], token_hash(self.session_token())))
                     return self.send_json({"ok": True})
             if name == "profile":
@@ -2521,12 +2627,15 @@ class Handler(BaseHTTPRequestHandler):
                 data = self.read_json()
                 if "display_name" in data:
                     conn.execute("UPDATE users SET display_name=? WHERE id=?", ((data["display_name"] or "").strip()[:80] or user["username"], user["id"]))
-                if "notify" in data:
-                    email = (data.get("notify_email") or "").strip()
+                if "account_email" in data or "notify_email" in data:
+                    # E-Mail des Kontos: für Benachrichtigungen und „Passwort vergessen“
+                    email = (data.get("account_email", data.get("notify_email")) or "").strip()
                     if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
                         return self.send_json({"error": "Bitte eine gültige E-Mail-Adresse angeben."}, 400)
+                    conn.execute("UPDATE users SET email=? WHERE id=?", (email, user["id"]))
+                if "notify" in data:
                     kinds = [k for k in (data["notify"] or []) if k in NOTIFY_KINDS and notify_allowed(user["perms"], k)]
-                    conn.execute("UPDATE users SET email=?, notify=? WHERE id=?", (email, json.dumps(kinds), user["id"]))
+                    conn.execute("UPDATE users SET notify=? WHERE id=?", (json.dumps(kinds), user["id"]))
                 if user["member_id"]:
                     vals = clean_values("members", {k: v for k, v in data.items() if k in self.PROFILE_FIELDS})
                     if vals:
@@ -2912,7 +3021,35 @@ document.getElementById('f').addEventListener('submit', async (e) => {
 LOGIN_PAGE = (AUTH_PAGE.replace("%%ACTION%%", "/auth/login").replace("%%NEXT%%", "/").replace("%%BODY%%", """
   <div class="field"><label for="u">Benutzername</label><input class="input" id="u" name="username" autocomplete="username" required autofocus></div>
   <div class="field"><label for="p">Passwort</label><input class="input" id="p" name="password" type="password" autocomplete="current-password" required></div>
-  <button class="btn primary">Anmelden</button>"""))
+  <button class="btn primary">Anmelden</button>
+  <p class="small" style="text-align:center;margin:14px 0 0"><a href="/passwort-vergessen">Passwort vergessen?</a></p>"""))
+
+FORGOT_PAGE = (AUTH_PAGE.replace("%%ACTION%%", "/auth/forgot").replace("%%NEXT%%", "/passwort-vergessen/gesendet").replace("%%BODY%%", """
+  <p style="margin-top:0"><b>Passwort vergessen?</b></p>
+  <p class="muted small">Gib deinen Benutzernamen oder deine E-Mail-Adresse ein. Du bekommst dann einen Link, mit dem du ein neues Passwort festlegst.</p>
+  <div class="field"><label for="l">Benutzername oder E-Mail</label><input class="input" id="l" name="login" autocomplete="username" required autofocus></div>
+  <button class="btn primary">Link schicken</button>
+  <p class="small" style="text-align:center;margin:14px 0 0"><a href="/login">Zurück zur Anmeldung</a></p>"""))
+
+FORGOT_SENT_PAGE = (AUTH_PAGE.replace("%%ACTION%%", "/").replace("%%NEXT%%", "/").replace("%%BODY%%", """
+  <p style="margin-top:0"><b>Schau in dein Postfach</b></p>
+  <p class="muted">Wenn es ein Konto mit diesen Angaben und einer hinterlegten E-Mail-Adresse gibt, haben wir gerade einen Link geschickt.
+    Er gilt 60 Minuten. Schau auch im Spam-Ordner nach.</p>
+  <p class="muted small">Keine Mail bekommen? Dann ist bei deinem Konto vermutlich keine E-Mail-Adresse hinterlegt. Bitte wende dich an den Vorstand bzw. Admin.</p>
+  <p class="small" style="text-align:center;margin:14px 0 0"><a href="/login">Zurück zur Anmeldung</a></p>"""))
+
+RESET_PAGE = (AUTH_PAGE.replace("%%ACTION%%", "/auth/reset").replace("%%NEXT%%", "/").replace("%%BODY%%", """
+  <p style="margin-top:0">Hallo <b>%%NAME%%</b>, leg jetzt dein neues Passwort fest.</p>
+  <p class="muted small">Dein Benutzername: <b>%%USER%%</b></p>
+  <input type="hidden" name="token" value="%%TOKEN%%">
+  <input type="text" name="username" value="%%USER%%" autocomplete="username" hidden>
+  <div class="field"><label for="p">Neues Passwort (mind. 10 Zeichen)</label><input class="input" id="p" name="password" type="password" autocomplete="new-password" required autofocus></div>
+  <div class="field"><label for="p2">Passwort wiederholen</label><input class="input" id="p2" name="password2" type="password" autocomplete="new-password" required></div>
+  <button class="btn primary">Passwort speichern und anmelden</button>"""))
+
+INVALID_RESET_PAGE = (AUTH_PAGE.replace("%%ACTION%%", "/").replace("%%NEXT%%", "/").replace("%%BODY%%", """
+  <p>Dieser Link ist ungültig oder abgelaufen.</p>
+  <p class="muted">Ein Link gilt 60 Minuten und nur einmal. <a href="/passwort-vergessen">Neuen Link anfordern</a></p>"""))
 
 SETUP_PAGE = (AUTH_PAGE.replace("%%ACTION%%", "/auth/setup").replace("%%NEXT%%", "/login").replace("%%BODY%%", """
   <p class="muted" style="margin-top:0">Ersteinrichtung: Lege deinen Admin-Zugang an.</p>

@@ -1,5 +1,10 @@
 # Änderungen
 
+## 3.9 (28.10.2026)
+- „Passwort vergessen?“ auf der Anmeldeseite: Link per E-Mail (60 Minuten und nur einmal gültig), danach direkt angemeldet, alle anderen Anmeldungen beendet, Info-Mail über die Änderung
+- Schutz: keine Auskunft, ob ein Konto existiert, Begrenzung pro Verbindung und Konto, gespeichert wird nur ein Hash des Links
+- Mein Profil: E-Mail-Adresse des Kontos direkt bei „Konto“ (für Passwort vergessen und Benachrichtigungen)
+
 ## 3.8 (28.10.2026)
 - Serverumzug unter Einstellungen: Komplett-Export und -Import mit allem (Vereinsdaten, Bilder, Videos, Konten, Gruppen, Rechte, Facebook-Verbindung, E-Mail-Versand, Protokoll)
   - Umzugsdatei mit Passwort verschlüsselt, nur einmal herunterladbar, falsches Passwort oder beschädigte Datei werden vor dem Ersetzen erkannt
