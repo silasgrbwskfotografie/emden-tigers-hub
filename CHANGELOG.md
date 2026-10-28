@@ -1,5 +1,13 @@
 # Änderungen
 
+## 3.6 (28.10.2026)
+- Auto-Posting mit Reitern: Kalender, Online, Statistik, Einrichtung & Storys
+  - Kalender: geplante Posts (automatisch, ohne Freigabe, gepostet, Fehler) und wiederkehrende Storys pro Monat, Klick auf einen Tag plant einen Post
+  - Online: aktuelle Beiträge und aktive Storys auf Facebook und Instagram mit Aufrufen, Reaktionen, Kommentaren, Geteilt, Likes, Reichweite
+  - Statistik: Follower, Aufrufe, Reichweite und Interaktionen für 7 oder 28 Tage, Tagesverlauf als Diagramm mit Tabelle
+  - Meta-Kennzahlen werden einzeln abgefragt (nicht mehr unterstützte werden übersprungen) und 15 Minuten zwischengespeichert
+  - Seiten-Token braucht zusätzlich read_insights und instagram_manage_insights
+
 ## 3.5 (28.10.2026)
 - Neu im Bereich Medien: Auto-Posting auf Facebook und Instagram
   - Posts im Postplan mit „Automatisch posten“ freigeben: Feed-Post und Story gehen zu Datum und Uhrzeit raus (Facebook, Instagram oder beides)

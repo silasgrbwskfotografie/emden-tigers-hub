@@ -139,6 +139,7 @@ Unter **Medien > Auto-Posting** verbindet ein Admin die Facebook-Seite. Dafür b
 - **Instagram** braucht ein Business- oder Creator-Konto, das mit der Facebook-Seite verknüpft ist, und die **öffentliche Adresse** des Hubs (z. B. `https://hub.deinedomain.de`), weil Instagram die Bilder selbst abholt.
 - Der Hub muss zur geplanten Zeit laufen. Storys werden bis zu 3 Stunden nachgeholt, freigegebene Posts bis zu 24 Stunden.
 - Das Token liegt nur in der Datenbank des Servers und ist nicht im Backup-Download enthalten.
+- Für **Statistik** und die Ansicht **Online** braucht das Token zusätzlich die Berechtigungen `read_insights` und `instagram_manage_insights`. Ein älteres Token dafür neu erzeugen und unter Einrichtung eintragen.
 
 ## Lokal testen (am PC)
 

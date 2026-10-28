@@ -46,7 +46,7 @@ from urllib.parse import urlparse, unquote, parse_qs, urlencode
 import urllib.request
 import urllib.error
 
-VERSION = "3.5"
+VERSION = "3.6"
 APP_NAME = "Emden Tigers Hub"
 ENV = os.environ.get
 HOST = ENV("TMH_HOST", "127.0.0.1")
@@ -865,6 +865,113 @@ def social_tick():
         publish_post(cfg, p)
     for r in claimed_rules:
         publish_rule(cfg, r)
+
+
+# ---- Statistik und Beiträge, die online sind (nur lesen, 15 Minuten zwischengespeichert) ----
+SOCIAL_CACHE = {}           # schlüssel -> (zeitpunkt, daten)
+SOCIAL_CACHE_SECONDS = 900
+# Meta ändert Kennzahlen regelmäßig: jede wird einzeln abgefragt, fehlende werden übersprungen und gemeldet
+FB_PAGE_METRICS = [("page_media_view", "Aufrufe"), ("page_total_media_view_unique", "Erreichte Personen"),
+                   ("page_post_engagements", "Interaktionen mit Beiträgen")]
+IG_ACCOUNT_METRICS = [("views", "Aufrufe"), ("reach", "Erreichte Konten"), ("accounts_engaged", "Konten mit Interaktion"),
+                      ("total_interactions", "Interaktionen"), ("profile_links_taps", "Klicks auf Profil-Links")]
+
+
+def social_cached(key, refresh, fn):
+    hit = SOCIAL_CACHE.get(key)
+    if hit and not refresh and time.time() - hit[0] < SOCIAL_CACHE_SECONDS:
+        return hit[1]
+    if hit and refresh and time.time() - hit[0] < 60:   # höchstens einmal pro Minute neu laden
+        return hit[1]
+    data = fn()
+    data["fetched_at"] = datetime.now().isoformat(timespec="seconds")
+    SOCIAL_CACHE[key] = (time.time(), data)
+    return data
+
+
+def graph_try(errors, label, *args, **kw):
+    try:
+        return graph(*args, **kw)
+    except GraphError as e:
+        errors.append(f"{label}: {e}")
+        return None
+
+
+def social_insights(cfg, days):
+    until = int(time.time())
+    since = until - days * 86400
+    tok, errors = cfg["fb_token"], []
+    fb = {"metrics": [], "followers": None}
+    page = graph_try(errors, "Facebook-Seite", "GET", cfg["fb_page_id"], {"fields": "followers_count,fan_count"}, tok) or {}
+    fb["followers"] = page.get("followers_count", page.get("fan_count"))
+    for key, label in FB_PAGE_METRICS:
+        r = graph_try(errors, f"Facebook {label}", "GET", f"{cfg['fb_page_id']}/insights", {"metric": key, "period": "day", "since": since, "until": until}, tok)
+        vals = ((r or {}).get("data") or [{}])[0].get("values") or []
+        if r is not None:
+            series = [{"date": (v.get("end_time") or "")[:10], "value": v.get("value") if isinstance(v.get("value"), (int, float)) else 0} for v in vals]
+            fb["metrics"].append({"key": key, "label": label, "value": sum(s["value"] for s in series), "series": series})
+    ig = None
+    if cfg["ig_user_id"]:
+        ig = {"metrics": [], "followers": None}
+        acc = graph_try(errors, "Instagram-Konto", "GET", cfg["ig_user_id"], {"fields": "followers_count,media_count"}, tok) or {}
+        ig["followers"], ig["media_count"] = acc.get("followers_count"), acc.get("media_count")
+        ig_since = until - min(days, 30) * 86400   # Instagram erlaubt höchstens 30 Tage
+        for key, label in IG_ACCOUNT_METRICS:
+            r = graph_try(errors, f"Instagram {label}", "GET", f"{cfg['ig_user_id']}/insights",
+                          {"metric": key, "period": "day", "metric_type": "total_value", "since": ig_since, "until": until}, tok)
+            if r is not None:
+                tv = ((r.get("data") or [{}])[0].get("total_value") or {}).get("value")
+                ig["metrics"].append({"key": key, "label": label, "value": tv or 0, "series": []})
+        r = graph_try(errors, "Instagram Verlauf", "GET", f"{cfg['ig_user_id']}/insights",
+                      {"metric": "reach", "period": "day", "metric_type": "time_series", "since": ig_since, "until": until}, tok)
+        series = [{"date": (v.get("end_time") or "")[:10], "value": v.get("value") or 0} for v in (((r or {}).get("data") or [{}])[0].get("values") or [])]
+        for m in ig["metrics"]:
+            if m["key"] == "reach":
+                m["series"] = series
+    return {"days": days, "facebook": fb, "instagram": ig, "errors": errors}
+
+
+def social_online(cfg):
+    tok, errors = cfg["fb_token"], []
+    out = {"facebook": [], "facebook_stories": [], "instagram": [], "instagram_stories": [], "errors": errors}
+    r = graph_try(errors, "Facebook-Beiträge", "GET", f"{cfg['fb_page_id']}/published_posts", {
+        "fields": "id,message,created_time,full_picture,permalink_url,status_type,shares,"
+                  "reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)", "limit": 20}, tok)
+    for p in (r or {}).get("data", []):
+        item = {"id": p["id"], "text": p.get("message", ""), "created": p.get("created_time", ""), "image": p.get("full_picture", ""),
+                "url": p.get("permalink_url", ""), "reactions": ((p.get("reactions") or {}).get("summary") or {}).get("total_count", 0),
+                "comments": ((p.get("comments") or {}).get("summary") or {}).get("total_count", 0),
+                "shares": (p.get("shares") or {}).get("count", 0), "views": None}
+        ins = graph_try([], "", "GET", f"{p['id']}/insights", {"metric": "post_media_view"}, tok)
+        vals = ((ins or {}).get("data") or [{}])[0].get("values") or []
+        if vals:
+            item["views"] = vals[-1].get("value")
+        out["facebook"].append(item)
+    st = graph_try(errors, "Facebook-Storys", "GET", f"{cfg['fb_page_id']}/stories", {}, tok)
+    for s in (st or {}).get("data", []):
+        if (s.get("status") or "").upper() in ("", "PUBLISHED"):
+            out["facebook_stories"].append({"id": s.get("post_id") or s.get("id"), "created": s.get("creation_time", ""),
+                                            "url": s.get("url", ""), "type": s.get("media_type", "")})
+    if cfg["ig_user_id"]:
+        fields = "id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count"
+        r = graph_try(errors, "Instagram-Beiträge", "GET", f"{cfg['ig_user_id']}/media", {"fields": fields, "limit": 20}, tok)
+        for m in (r or {}).get("data", []):
+            item = {"id": m["id"], "text": m.get("caption", ""), "created": m.get("timestamp", ""), "image": m.get("thumbnail_url") or m.get("media_url", ""),
+                    "url": m.get("permalink", ""), "type": m.get("media_product_type") or m.get("media_type", ""),
+                    "likes": m.get("like_count", 0), "comments": m.get("comments_count", 0), "views": None, "reach": None}
+            ins = graph_try([], "", "GET", f"{m['id']}/insights", {"metric": "views,reach"}, tok)
+            for d in (ins or {}).get("data", []):
+                item[d.get("name")] = ((d.get("values") or [{}])[0]).get("value", (d.get("total_value") or {}).get("value"))
+            out["instagram"].append(item)
+        r = graph_try(errors, "Instagram-Storys", "GET", f"{cfg['ig_user_id']}/stories", {"fields": fields}, tok)
+        for m in (r or {}).get("data", []):
+            item = {"id": m["id"], "created": m.get("timestamp", ""), "image": m.get("thumbnail_url") or m.get("media_url", ""),
+                    "url": m.get("permalink", ""), "views": None, "reach": None}
+            ins = graph_try([], "", "GET", f"{m['id']}/insights", {"metric": "views,reach"}, tok)
+            for d in (ins or {}).get("data", []):
+                item[d.get("name")] = ((d.get("values") or [{}])[0]).get("value", (d.get("total_value") or {}).get("value"))
+            out["instagram_stories"].append(item)
+    return out
 
 
 def social_loop():
@@ -1763,9 +1870,22 @@ class Handler(BaseHTTPRequestHandler):
             cfg = social_config()
             return self.send_json({"connected": bool(cfg["fb_token"]), "page": cfg["fb_page_name"], "instagram": cfg["ig_username"],
                                    "public_url": cfg["public_url"], "is_admin": bool(user["is_admin"])})
+        if method == "GET" and sub in ("insights", "online"):
+            if not can("medien", 1):
+                return self.deny()
+            cfg = social_config()
+            if not cfg["fb_token"]:
+                return self.send_json({"error": "Es ist noch keine Facebook-Seite verbunden."}, 400)
+            q = parse_qs(urlparse(self.path).query)
+            refresh = (q.get("refresh") or [""])[0] == "1"
+            if sub == "insights":
+                days = 7 if (q.get("days") or ["28"])[0] == "7" else 28
+                return self.send_json(social_cached(f"insights{days}", refresh, lambda: social_insights(cfg, days)))
+            return self.send_json(social_cached("online", refresh, lambda: social_online(cfg)))
         if sub == "connection":
             if not user["is_admin"]:
                 return self.deny("Nur Admins können die Verbindung einrichten.")
+            SOCIAL_CACHE.clear()
             if method == "DELETE":
                 with db() as conn:
                     for k in ("fb_token", "fb_page_id", "fb_page_name", "ig_user_id", "ig_username"):
