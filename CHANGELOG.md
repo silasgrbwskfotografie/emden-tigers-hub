@@ -1,5 +1,12 @@
 # Änderungen
 
+## 3.4 (28.10.2026)
+- Neue Seite Teamkleidung (verwalten mit Bearbeiten-Recht in Verein, Finanzen oder Medien)
+  - Klamotte anlegen mit Bild, Beschreibung, Preis und Bestellschluss
+  - Bestellfelder frei festlegen (Text, Zahl, Auswahl, Ja/Nein), Pflichtfelder und interne Felder, Vorlagen für Name, Rückennummer, Größe, Flock, Telefon
+  - Bestell-Link ohne Anmeldung: Formular und Liste der bisherigen Bestellungen (ohne interne Felder und ohne „bezahlt“), Link jederzeit neu erzeugbar
+  - Im Hub: Bestellungen bearbeiten, „bezahlt“ abhaken, Summen, Stückzahl pro Größe, Text und CSV für den Lieferanten
+
 ## 3.3 (28.10.2026)
 - Stadionheft umgebaut: statt Seitenplan jetzt alle Infos für ein Heft zum Rauskopieren nach Canva
   - Sponsoren für das Heft auswählen, mit Logo und Anzeigen-Dateien

@@ -32,7 +32,7 @@ async function load(table, force = false) {
 function invalidate(...tables) { tables.forEach(t => delete App.cache[t]); }
 async function loadAll(...tables) { return Promise.all(tables.map(t => load(t))); }
 
-const APP_VERSION = '3.3';
+const APP_VERSION = '3.4';
 async function checkVersion() {
   try {
     const info = await api('');
@@ -45,25 +45,30 @@ async function checkVersion() {
 }
 
 /* ---------- Rechte ---------- */
+// Teamkleidung dürfen Verein, Finanzen und Medien verwalten (wie TABLE_AREAS_ANY im Server)
+const APPAREL_AREAS = 'verein|finanzen|medien';
 const PAGE_AREA = {
   posts: 'medien', social: 'medien', media: 'medien', team: 'medien', magazine: 'medien',
-  games: 'verein', players: 'verein', opponents: 'verein', sponsors: 'verein',
+  games: 'verein', players: 'verein', opponents: 'verein', sponsors: 'verein', apparel: APPAREL_AREAS,
   members: 'mitglieder', finance: 'finanzen', cards: 'finanzen',
   accounts: 'admin', groups: 'admin', settings: 'admin',
 };
 function can(area, lvl = 1) {
   const me = App.me; if (!me) return false;
   if (area === 'admin') return !!me.is_admin;
-  return (me.perms?.[area] || 0) >= lvl;
+  return area.split('|').some(a => (me.perms?.[a] || 0) >= lvl);   // 'a|b': eines der Bereiche reicht
 }
 function applyPermissions() {
   $$('#nav [data-area]').forEach(el => { el.style.display = can(el.dataset.area) ? '' : 'none'; });
+  // Überschrift nur zeigen, wenn darunter (bis zur nächsten Überschrift) etwas sichtbar ist
   $$('#nav .nav-group[data-group]').forEach(g => {
-    const items = $$(`#nav a[data-area="${g.dataset.group}"]`);
-    g.style.display = items.some(a => a.style.display !== 'none') ? '' : 'none';
+    let el = g.nextElementSibling, any = false;
+    for (; el && !el.classList.contains('nav-group'); el = el.nextElementSibling) if (el.style.display !== 'none') any = true;
+    g.style.display = any ? '' : 'none';
   });
   document.body.toggleAttribute('data-mw', can('medien', 2));
   document.body.toggleAttribute('data-vw', can('verein', 2));
+  document.body.toggleAttribute('data-aw', can(APPAREL_AREAS, 2));
 }
 function renderSideFoot() {
   const me = App.me;

@@ -46,7 +46,7 @@ from urllib.parse import urlparse, unquote, parse_qs
 import urllib.request
 import urllib.error
 
-VERSION = "3.3"
+VERSION = "3.4"
 APP_NAME = "Emden Tigers Hub"
 ENV = os.environ.get
 HOST = ENV("TMH_HOST", "127.0.0.1")
@@ -267,6 +267,27 @@ TABLES = {
         "image": "TEXT",
         "answers": "TEXT",                         # Behind the Helmet: JSON {Frage: Antwort}
     },
+    "apparel": {                                # Teamkleidung: ein Eintrag pro Artikel, z. B. Hoodie 2027
+        "name": "TEXT",
+        "description": "TEXT",
+        "image": "TEXT",
+        "price": "REAL",
+        "deadline": "TEXT",                        # Bestellschluss (an dem Tag noch offen)
+        "active": "INTEGER DEFAULT 1",
+        "show_list": "INTEGER DEFAULT 1",          # Bestellungen auf der öffentlichen Seite zeigen
+        "fields": "TEXT",                          # JSON-Liste [{key, label, type, options, required, internal}]
+        "public_token": "TEXT",                    # geheimer Teil des Bestell-Links, nur vom Server vergeben
+        "notes": "TEXT",
+    },
+    "apparel_orders": {
+        "apparel_id": "INTEGER",
+        "data": "TEXT",                            # JSON {Feld-Key: Wert}
+        "quantity": "INTEGER DEFAULT 1",
+        "paid": "INTEGER DEFAULT 0",
+        "source": "TEXT",                          # Link / Hub
+        "created": "TEXT",
+        "notes": "TEXT",
+    },
 }
 
 DEFAULT_SETTINGS = {
@@ -312,6 +333,12 @@ TABLE_AREA = {
     "games": "verein", "opponents": "verein", "players": "verein", "sponsors": "verein",
     "members": "mitglieder",
     "supporter_cards": "finanzen", "transactions": "finanzen",
+    "apparel": "verein", "apparel_orders": "verein",
+}
+# Tabellen, die mehrere Bereiche verwalten dürfen: es zählt das höchste Recht dieser Bereiche
+TABLE_AREAS_ANY = {
+    "apparel": ("verein", "finanzen", "medien"),
+    "apparel_orders": ("verein", "finanzen", "medien"),
 }
 # Nachschlage-Tabellen: lesbar für alle, die irgendeinen Bereich sehen (z. B. Spielplan für Captions)
 SHARED_READ = {"games", "opponents", "players", "sponsors", "media"}
@@ -540,6 +567,64 @@ def login_blocked(ip):
 def login_failed(ip):
     with FAILED_LOCK:
         FAILED_LOGINS.setdefault(ip, []).append(time.time())
+
+
+# ---------------------------------------------------------------------------
+# Teamkleidung: öffentlicher Bestell-Link (ohne Anmeldung)
+# ---------------------------------------------------------------------------
+ORDER_HITS = {}          # IP -> Zeitpunkte der letzten öffentlichen Bestellungen
+ORDER_LIMIT = 60         # Versuche pro Stunde und IP (großzügig, weil ein Team oft über dasselbe WLAN bestellt)
+AP_FIELD_TYPES = {"text", "number", "select", "check"}
+
+
+def order_rate_ok(ip):
+    with FAILED_LOCK:
+        now = time.time()
+        hits = [t for t in ORDER_HITS.get(ip, []) if now - t < 3600]
+        ok = len(hits) < ORDER_LIMIT
+        if ok:
+            hits.append(now)
+        ORDER_HITS[ip] = hits
+        return ok
+
+
+def apparel_fields(a):
+    try:
+        fields = json.loads(a["fields"] or "[]")
+    except ValueError:
+        return []
+    return [f for f in fields if isinstance(f, dict) and f.get("key") and f.get("type") in AP_FIELD_TYPES]
+
+
+def apparel_open(a):
+    return bool(a["active"]) and (not a["deadline"] or datetime.now().strftime("%Y-%m-%d") <= a["deadline"])
+
+
+def clean_order(fields, data, qty):
+    """Prüft eine Bestellung vom öffentlichen Link. Liefert (werte, menge, fehler)."""
+    if not isinstance(data, dict):
+        return None, None, "Ungültige Bestellung."
+    out = {}
+    for f in fields:
+        label, t, v = f.get("label") or "Feld", f["type"], data.get(f["key"])
+        if t == "check":
+            v = 1 if v in (True, 1, "1", "true", "on") else 0
+        else:
+            v = str(v if v is not None else "").strip()[:200]
+            if t == "select" and v and v not in (f.get("options") or []):
+                return None, None, f"Ungültige Auswahl bei {label}."
+            if t == "number" and v and not re.fullmatch(r"\d{1,6}", v):
+                return None, None, f"{label}: bitte nur Ziffern eintragen."
+        if f.get("required") and not v:
+            return None, None, f"Bitte {label} ausfüllen."
+        out[f["key"]] = v
+    try:
+        qty = int(qty)
+    except (TypeError, ValueError):
+        qty = 0
+    if not 1 <= qty <= 20:
+        return None, None, "Die Menge muss zwischen 1 und 20 liegen."
+    return out, qty, None
 
 
 # ---------------------------------------------------------------------------
@@ -1133,6 +1218,8 @@ class Handler(BaseHTTPRequestHandler):
                                   .replace("%%USER%%", html_esc(u["username"])).replace("%%TOKEN%%", html_esc(p[1])))
         if head == "auth":
             return self.api_auth(method, p[1:])
+        if head == "bestellen":
+            return self.public_order(method, p[1:])
 
         # Ab hier nur mit Anmeldung
         user = self.current_user()
@@ -1234,6 +1321,71 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"ok": True})
         return self.send_json({"error": "Unbekannter Pfad"}, 404)
 
+    # -- Öffentlicher Bestell-Link (Teamkleidung) -------------------------
+    # Nur über den geheimen Link erreichbar. Liefert ausschließlich: Infos zum Artikel, die Bestellfelder,
+    # die öffentliche Liste (ohne interne Felder, ohne „bezahlt“) und nimmt neue Bestellungen an.
+    def public_order(self, method, p):
+        tok = p[0] if p else ""
+        a = None
+        if re.fullmatch(r"[A-Za-z0-9_-]{16,64}", tok):
+            with db() as conn:
+                a = conn.execute("SELECT * FROM apparel WHERE public_token=?", (tok,)).fetchone()
+        sub = p[1] if len(p) > 1 else ""
+        if not a or len(p) > 2:
+            if method == "GET" and sub == "":
+                return self.send_html(ORDER_INVALID_PAGE, 404)
+            return self.send_json({"error": "Dieser Bestell-Link ist ungültig."}, 404)
+        fields = apparel_fields(a)
+        if method == "GET" and sub == "":
+            return self.send_file(STATIC / "order.html")
+        if method == "GET" and sub == "bild":
+            img = a["image"] or ""
+            if not img.startswith("/media/"):
+                return self.send_error(404)
+            return self.serve_under(MEDIA, [img.rsplit("/", 1)[-1]], inline=MEDIA_INLINE)
+        if sub != "daten":
+            return self.send_error(404)
+        if method == "GET":
+            orders, rows = [], []
+            with db() as conn:
+                club = get_setting(conn, "club_name") or APP_NAME
+                if a["show_list"]:
+                    rows = conn.execute("SELECT data, quantity FROM apparel_orders WHERE apparel_id=? ORDER BY id", (a["id"],)).fetchall()
+            if rows:
+                public = [f["key"] for f in fields if not f.get("internal")]
+                for r in rows:
+                    try:
+                        d = json.loads(r["data"] or "{}")
+                    except ValueError:
+                        d = {}
+                    orders.append({"data": {k: d.get(k, "") for k in public}, "quantity": r["quantity"] or 1})
+            return self.send_json({
+                "name": a["name"], "description": a["description"] or "", "image": bool(a["image"]),
+                "price": a["price"], "deadline": a["deadline"] or "", "open": apparel_open(a), "show_list": bool(a["show_list"]),
+                "fields": [{k: f.get(k) for k in ("key", "label", "type", "options", "required", "internal")} for f in fields],
+                "orders": orders, "club": club,
+            })
+        if method == "POST":
+            if self.headers.get("X-TMH") != "1":
+                return self.send_json({"error": "Ungültige Anfrage"}, 403)
+            if not apparel_open(a):
+                return self.send_json({"error": "Für diesen Artikel ist der Bestellschluss vorbei."}, 400)
+            if not order_rate_ok(self.client_ip()):
+                return self.send_json({"error": "Zu viele Bestellungen in kurzer Zeit. Bitte später erneut versuchen."}, 429)
+            try:
+                data = json.loads(self.read_body(20000).decode("utf-8") or "{}")
+            except ValueError:
+                return self.send_json({"error": "Ungültige Bestellung."}, 400)
+            vals, qty, err = clean_order(fields, data.get("data"), data.get("quantity", 1))
+            if err:
+                return self.send_json({"error": err}, 400)
+            now = datetime.now().isoformat(timespec="seconds")
+            with db() as conn:
+                conn.execute("INSERT INTO apparel_orders (apparel_id, data, quantity, paid, source, created, created_at, updated_at) "
+                             "VALUES (?, ?, ?, 0, 'Link', ?, ?, ?)", (a["id"], json.dumps(vals, ensure_ascii=False), qty, now, now, now))
+            return self.send_json({"ok": True})
+        return self.send_json({"error": "Methode nicht erlaubt"}, 405)
+
     # -- API --------------------------------------------------------------
     def deny(self, msg="Dafür fehlen dir die Rechte."):
         return self.send_json({"error": msg}, 403)
@@ -1315,14 +1467,22 @@ class Handler(BaseHTTPRequestHandler):
                     return self.deny()
                 return self.send_json(sync_sheet())
 
+            if name == "apparel" and method == "POST" and len(p) == 3 and p[2] == "new-link":
+                if max(perms.get(a, 0) for a in TABLE_AREAS_ANY["apparel"]) < 2:
+                    return self.deny()
+                with db() as conn:
+                    conn.execute("UPDATE apparel SET public_token=? WHERE id=?", (secrets.token_urlsafe(18), int(p[1])))
+                return self.send_json({"ok": True})
+
             if name in TABLES:
                 area = TABLE_AREA.get(name)
+                lvl = max(perms.get(a, 0) for a in TABLE_AREAS_ANY.get(name, (area,)))
                 if method == "GET":
-                    if not (can(area, 1) or (name in SHARED_READ and any_read)):
+                    if not (lvl >= 1 or (name in SHARED_READ and any_read)):
                         return self.deny()
                 elif name == "media" and method == "POST":
                     return self.deny()
-                elif not can(area, 2):
+                elif lvl < 2:
                     return self.deny(f"Für den Bereich {AREAS.get(area, area)} hast du nur Leserechte.")
                 rid = int(p[1]) if len(p) > 1 else None
                 return self.api_table(method, name, rid, perms)
@@ -1509,6 +1669,8 @@ class Handler(BaseHTTPRequestHandler):
                 vals = clean_values(table, self.read_json())
                 for f in hide:
                     vals.pop(f, None)
+                if table == "apparel":
+                    vals["public_token"] = secrets.token_urlsafe(18)
                 vals["created_at"] = now
                 vals["updated_at"] = now
                 cols = ", ".join(f'"{k}"' for k in vals)
@@ -1521,6 +1683,7 @@ class Handler(BaseHTTPRequestHandler):
                 vals = clean_values(table, self.read_json())
                 for f in hide:
                     vals.pop(f, None)
+                vals.pop("public_token", None)   # neuer Link nur über /api/apparel/<id>/new-link
                 vals["updated_at"] = now
                 sets = ", ".join(f'"{k}"=?' for k in vals)
                 conn.execute(f'UPDATE "{table}" SET {sets} WHERE id=?', list(vals.values()) + [rid])
@@ -1537,6 +1700,8 @@ class Handler(BaseHTTPRequestHandler):
                     conn.execute("UPDATE users SET member_id=NULL WHERE member_id=?", (rid,))
                 if table == "magazines":
                     conn.execute("DELETE FROM magazine_pages WHERE magazine_id=?", (rid,))
+                if table == "apparel":
+                    conn.execute("DELETE FROM apparel_orders WHERE apparel_id=?", (rid,))
                 return self.send_json({"ok": True})
 
         return self.send_json({"error": "Methode nicht erlaubt"}, 405)
@@ -1704,6 +1869,10 @@ INVITE_PAGE = (AUTH_PAGE.replace("%%ACTION%%", "/auth/invite").replace("%%NEXT%%
 INVALID_INVITE_PAGE = (AUTH_PAGE.replace("%%ACTION%%", "/").replace("%%NEXT%%", "/").replace("%%BODY%%", """
   <p>Dieser Einladungslink ist ungültig oder abgelaufen.</p>
   <p class="muted">Bitte frag beim Vorstand bzw. Admin nach einem neuen Link. Wenn du schon ein Passwort hast: <a href="/login">zur Anmeldung</a></p>"""))
+
+ORDER_INVALID_PAGE = (AUTH_PAGE.replace("%%ACTION%%", "/").replace("%%NEXT%%", "/").replace("%%BODY%%", """
+  <p>Dieser Bestell-Link ist ungültig.</p>
+  <p class="muted">Bitte frag beim Verein nach dem aktuellen Link.</p>"""))
 
 
 def html_esc(t):

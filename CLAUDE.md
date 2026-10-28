@@ -26,13 +26,17 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
 - Stufen: 0 = kein Zugriff, 1 = Lesen, 2 = Bearbeiten. Admin (`users.is_admin`) darf alles.
 - Effektives Recht = Ausnahme der Person (`user_perms`) falls gesetzt, sonst Maximum der Gruppen (`effective_perms`).
 - `TABLE_AREA` ordnet jede Tabelle einem Bereich zu. `SHARED_READ`: Nachschlage-Tabellen, lesbar für alle mit irgendeinem Leserecht.
+- `TABLE_AREAS_ANY`: Tabellen, die mehrere Bereiche verwalten dürfen (Teamkleidung: Verein, Finanzen, Medien). Im Frontend `'verein|finanzen|medien'` in `PAGE_AREA`/`data-area`, `can()` versteht `|`, CSS-Klasse `.aw`.
 - `FINANCE_FIELDS`: Felder, die nur mit Finanz-Leserecht ausgeliefert werden (z. B. `sponsors.amount`).
 - **Der Server prüft jede Anfrage.** Das Frontend blendet nur aus (CSS: `.pp` braucht Medien-Schreibrecht, `.vw` Verein-Schreibrecht, `body[data-ro]` = Lesemodus, `.keep` bleibt im Lesemodus sichtbar).
 - Neue Tabelle: in `TABLES` und `TABLE_AREA` eintragen, Seite in `pages.js`, Menüpunkt in `index.html` mit `data-area`, Eintrag in `PAGE_AREA`.
 
 ## Sicherheit (nicht aufweichen)
 
-- Alles außer `/login`, `/setup`, `/invite`, `/healthz`, `style.css`, `logo.png`, `icon.png` braucht eine Sitzung.
+- Alles außer `/login`, `/setup`, `/invite`, `/healthz`, `/bestellen`, `style.css`, `logo.png`, `icon.png` braucht eine Sitzung.
+- `/bestellen/<token>` (Teamkleidung, `public_order` in server.py) ist bewusst ohne Login erreichbar, aber nur mit dem geheimen Token des Artikels.
+  Liefert nur Artikel-Infos, Bestellfelder und die öffentliche Liste (ohne interne Felder, ohne `paid`, ohne Notizen) und nimmt geprüfte Bestellungen an
+  (nur definierte Felder, Längen- und Auswahlprüfung, Bestellschluss, Rate-Limit pro IP). Das Token vergibt nur der Server (`/api/apparel/<id>/new-link`).
 - Schreibende Anfragen brauchen den Header `X-TMH: 1` (CSRF-Schutz). `api()` in app.js setzt ihn.
 - Passwörter: scrypt. Sitzungen: Token-Hash in `sessions`, Cookie HttpOnly, SameSite=Lax, Secure auf dem Server.
 - Login-Sperre nach Fehlversuchen. Backup-Download enthält keine Konten. Restore behält Konten/Gruppen des Servers.

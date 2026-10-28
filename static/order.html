@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Teamkleidung bestellen</title>
+<link rel="icon" href="/static/icon.png">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  body { display: block; background: var(--bg); }
+  .ord { max-width: 760px; margin: 0 auto; padding: 18px 16px 40px; }
+  .ord-head { display: flex; align-items: center; gap: 12px; background: #0b0b0b; color: #fff; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
+  .ord-head img { width: 54px; height: 36px; object-fit: contain; }
+  .ord-head b { font-family: var(--head); text-transform: uppercase; letter-spacing: .3px; display: block; }
+  .ord-head span { font-size: 11px; color: #999; letter-spacing: 2px; text-transform: uppercase; }
+  .ord-item { display: flex; gap: 16px; flex-wrap: wrap; }
+  .ord-item img { width: 220px; max-width: 100%; border-radius: 10px; object-fit: cover; background: #eee; }
+  .ord-item .desc { white-space: pre-wrap; color: var(--ink-2); }
+  .ord .card { margin-bottom: 16px; }
+  .ord .form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .ord .field.full { grid-column: 1 / -1; }
+  .ord .field label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 4px; }
+  .ord .field input:not([type=checkbox]), .ord .field select { width: 100%; }
+  .ord .total { font-size: 18px; font-weight: 700; }
+  .ord .msg { padding: 10px 12px; border-radius: 8px; margin-top: 12px; }
+  .ord .msg.ok { background: var(--ok-soft); color: var(--ok); }
+  .ord .msg.err { background: var(--red-soft); color: var(--red); }
+  @media (max-width: 560px) { .ord .form { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="ord">
+  <div class="ord-head"><img src="/static/logo.png" alt=""><div><b id="club">Emden Tigers</b><span>Teamkleidung</span></div></div>
+  <div id="app"><div class="card empty">Lade ...</div></div>
+</div>
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const eur = n => (Number(n) || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+const fmtDate = d => { if (!d) return ''; const [y, m, t] = d.split('-'); return `${t}.${m}.${y}`; };
+const base = location.pathname.replace(/\/+$/, '');
+const app = document.getElementById('app');
+let info = null;
+
+function fieldHtml(f) {
+  const id = 'f_' + f.key, req = (f.required ? ' *' : '') + (f.internal && info.show_list ? ' <span class="muted small" style="font-weight:400">(nur für den Verein sichtbar)</span>' : '');
+  if (f.type === 'check') return `<div class="field full"><label class="check"><input type="checkbox" id="${id}"> ${esc(f.label)}${req}</label></div>`;  if (f.type === 'select') return `<div class="field"><label for="${id}">${esc(f.label)}${req}</label><select class="input" id="${id}"><option value="">Bitte wählen</option>${(f.options || []).map(o => `<option>${esc(o)}</option>`).join('')}</select></div>`;
+  return `<div class="field"><label for="${id}">${esc(f.label)}${req}</label><input class="input" id="${id}" maxlength="${f.type === 'number' ? 6 : 200}" ${f.type === 'number' ? 'inputmode="numeric" pattern="[0-9]*"' : ''}></div>`;
+}
+
+function render() {
+  const d = info, price = Number(d.price) || 0;
+  document.getElementById('club').textContent = d.club;
+  document.title = d.name + ' bestellen';
+  const pub = d.fields.filter(f => !f.internal);
+  const pieces = d.orders.reduce((s, o) => s + (Number(o.quantity) || 1), 0);
+  app.innerHTML = `
+    <div class="card"><div class="ord-item">${d.image ? `<img src="${base}/bild" alt="">` : ''}
+      <div style="flex:1;min-width:220px"><h1 style="margin:0 0 6px">${esc(d.name)}</h1>
+        ${price ? `<div class="total">${eur(price)} <span class="muted small" style="font-weight:400">pro Stück</span></div>` : ''}
+        ${d.deadline ? `<div class="small" style="margin:6px 0">Bestellschluss: <b>${fmtDate(d.deadline)}</b></div>` : ''}
+        ${d.description ? `<div class="desc">${esc(d.description)}</div>` : ''}</div></div></div>
+    ${d.open ? `<div class="card"><h2>Bestellen</h2>
+      <form class="form" id="ordForm" onsubmit="return false">${d.fields.map(fieldHtml).join('')}
+        <div class="field"><label for="f_qty">Menge *</label><input class="input" id="f_qty" type="number" min="1" max="20" value="1"></div>
+        ${price ? '<div class="field"><label>Summe</label><div class="total" id="sum"></div></div>' : ''}
+      </form>
+      <div class="btn-row" style="margin-top:14px"><button class="btn primary" id="send">Bestellung absenden</button><span class="muted small">* Pflichtfeld</span></div>
+      <div id="msg"></div></div>`
+    : `<div class="card"><h2>Bestellung geschlossen</h2><div class="muted">Für diesen Artikel werden keine Bestellungen mehr angenommen.</div></div>`}
+    ${d.show_list ? `<div class="card"><h2>Bisherige Bestellungen <span class="muted small">(${d.orders.length} Bestellungen, ${pieces} Stück)</span></h2>
+      ${d.orders.length ? `<div class="table-wrap"><table><thead><tr>${pub.map(f => `<th>${esc(f.label)}</th>`).join('')}<th>Menge</th></tr></thead><tbody>
+        ${d.orders.map(o => `<tr>${pub.map(f => `<td>${f.type === 'check' ? (Number(o.data[f.key]) ? 'ja' : '') : esc(o.data[f.key])}</td>`).join('')}<td>${esc(o.quantity)}</td></tr>`).join('')}
+      </tbody></table></div>` : '<div class="muted">Noch keine Bestellungen.</div>'}</div>` : ''}`;
+  if (!d.open) return;
+  const qty = document.getElementById('f_qty'), sum = document.getElementById('sum');
+  const upd = () => { if (sum) sum.textContent = eur(price * (Number(qty.value) || 0)); };
+  qty.oninput = upd; upd();
+  document.getElementById('send').onclick = send;
+}
+
+async function send() {
+  const msg = document.getElementById('msg'), btn = document.getElementById('send');
+  const data = {};
+  for (const f of info.fields) {
+    const el = document.getElementById('f_' + f.key);
+    data[f.key] = f.type === 'check' ? el.checked : el.value.trim();
+    if (f.required && !data[f.key]) { msg.className = 'msg err'; msg.textContent = `Bitte ${f.label} ausfüllen.`; el.focus(); return; }
+  }
+  btn.disabled = true;
+  try {
+    const r = await fetch(base + '/daten', { method: 'POST', headers: { 'X-TMH': '1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data, quantity: Number(document.getElementById('f_qty').value) || 0 }) });
+    const res = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(res.error || 'Fehler ' + r.status);
+    await load();
+    const m = document.getElementById('msg');
+    if (m) { m.className = 'msg ok'; m.textContent = 'Danke! Deine Bestellung ist eingegangen. Du kannst direkt eine weitere Bestellung eintragen.'; }
+  } catch (e) {
+    msg.className = 'msg err'; msg.textContent = e.message; btn.disabled = false;
+  }
+}
+
+async function load() {
+  const r = await fetch(base + '/daten');
+  if (!r.ok) { app.innerHTML = '<div class="card empty">Dieser Bestell-Link ist ungültig.</div>'; return; }
+  info = await r.json();
+  render();
+}
+load();
+</script>
+</body>
+</html>
