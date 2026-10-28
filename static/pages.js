@@ -65,6 +65,7 @@ const F = {
     { key: 'posts_agreed', label: 'Vereinbarte Posts', type: 'number', hint: 'Der Hub zählt gepostete Beiträge mit diesem Sponsor mit.' },
     { key: 'active', label: 'Aktiv', type: 'check', default: 1 },
     { key: 'logo', label: 'Logo', type: 'image', full: true },
+    { key: 'files', label: 'Dateien', type: 'files', full: true, hint: 'Verträge, Rechnungen, Bilder, Druckdaten. Sichtbar für alle, die Sponsoren sehen dürfen.' },
     { key: 'notes', label: 'Vereinbarungen / Notizen', type: 'textarea' },
   ],
   media_team: () => [
@@ -440,6 +441,7 @@ App.pages.sponsors = async (view) => {
       { label: 'Laufzeit', html: r => [fmtDate(r.start), fmtDate(r.end)].filter(Boolean).join(' bis ') },
       { label: 'Posts', html: r => { const done = App.cache.posts.filter(p => p.sponsor_id == r.id && p.status === 'Gepostet').length; const ag = Number(r.posts_agreed) || 0; return ag ? `<span class="badge ${done >= ag ? 'ok' : 'warn'}">${done}/${ag}</span>` : `<span class="muted small">${done} gepostet</span>`; } },
       { label: 'Instagram', html: r => esc(handle(r.instagram)) },
+      { label: 'Dateien', html: r => { const n = parseFiles(r.files).length; return n ? `<span class="badge">${n} ${n === 1 ? 'Datei' : 'Dateien'}</span>` : ''; } },
     ],
   })(view);
 };

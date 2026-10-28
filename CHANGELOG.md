@@ -1,5 +1,10 @@
 # Änderungen
 
+## 3.1 (28.10.2026)
+- Sponsoren: beliebige Dateien ablegen (Verträge, Rechnungen, Bilder, Druckdaten), sichtbar für alle mit Zugriff auf Sponsoren
+- Versionsnummer klein oben am Logo
+- Hochgeladene Dokumente, die kein Bild oder PDF sind, werden nur noch als Download ausgeliefert
+
 ## 3.0.1 (28.10.2026)
 - Caddy: HTTPS funktioniert auch beim Aufruf über eine IP-Adresse (z. B. Test-VM im lokalen Netz)
 

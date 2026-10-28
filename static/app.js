@@ -32,7 +32,7 @@ async function load(table, force = false) {
 function invalidate(...tables) { tables.forEach(t => delete App.cache[t]); }
 async function loadAll(...tables) { return Promise.all(tables.map(t => load(t))); }
 
-const APP_VERSION = '3.0.1';
+const APP_VERSION = '3.1';
 async function checkVersion() {
   try {
     const info = await api('');
@@ -82,6 +82,7 @@ function applyBranding() {
   $('#brandName').textContent = s.club_name || 'Emden Tigers';
   const mark = $('#brandMark');
   mark.innerHTML = `<img src="${s.logo || '/static/logo.png'}" alt="Emden Tigers">`;
+  $('#brandVer').textContent = 'v' + APP_VERSION;
 }
 
 async function uploadDataUrl(dataUrl, name, library = true, tags = '') {
@@ -187,9 +188,18 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 function confirmBox(text) { return window.confirm(text); }
 
 /*
-  Feldtypen: text, number, date, time, textarea, select, check, image, ref, url
+  Feldtypen: text, number, date, time, textarea, select, check, image, file, files, ref, url
   { key, label, type, options, ref:{table, label:fn}, full, hint, show:fn(values) }
+  files: mehrere beliebige Dateien, gespeichert als JSON-Liste [{name, path, size, added}]
 */
+function parseFiles(v) {
+  try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch { return []; }
+}
+function fmtSize(n) {
+  n = Number(n) || 0;
+  return n >= 1048576 ? (n / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+}
+const INLINE_EXT = /\.(png|jpe?g|gif|webp|pdf)$/i;
 function fieldHtml(f, val) {
   const id = 'f_' + f.key;
   const v = val ?? f.default ?? '';
@@ -212,6 +222,13 @@ function fieldHtml(f, val) {
         <input type="file" id="${id}_file" accept="image/*,application/pdf" hidden>
         <div class="btn-row"><button type="button" class="btn sm" data-filepick="${f.key}">Datei wählen</button>
         <button type="button" class="btn sm ghost" data-fileclear="${f.key}">Entfernen</button></div></div>`; break;
+    case 'files':
+      input = `<div class="files-field" data-filesbox="${f.key}">
+        <input type="hidden" id="${id}" name="${f.key}" value="${esc(JSON.stringify(parseFiles(v)))}">
+        <ul class="file-list" id="${id}_list"></ul>
+        <input type="file" id="${id}_file" multiple hidden>
+        <div class="btn-row"><button type="button" class="btn sm" data-filesadd="${f.key}">Dateien hinzufügen</button>
+        <span class="hint">oder hierher ziehen, max. 25 MB pro Datei</span></div></div>`; break;
     case 'image':
       input = `<div class="img-field"><img id="${id}_prev" ${v ? `src="${esc(v)}"` : 'style="opacity:.3"'} alt="">
         <input type="hidden" id="${id}" name="${f.key}" value="${esc(v)}">
@@ -254,6 +271,39 @@ function bindFileFields(root) {
   $$('[data-fileclear]', root).forEach(b => b.onclick = () => {
     const key = b.dataset.fileclear;
     $('#f_' + key, root).value = ''; $('#f_' + key + '_link', root).style.display = 'none';
+  });
+  $$('[data-filesbox]', root).forEach(box => {
+    const key = box.dataset.filesbox, hidden = $('#f_' + key, root), inp = $('#f_' + key + '_file', root);
+    const draw = () => {
+      const list = parseFiles(hidden.value);
+      $('#f_' + key + '_list', root).innerHTML = list.map((x, i) => `<li>
+        <a href="${esc(x.path)}" target="_blank" rel="noopener" ${INLINE_EXT.test(x.path) ? '' : `download="${esc(x.name)}"`}>${esc(x.name)}</a>
+        <span class="muted small">${fmtSize(x.size)}${x.added ? ', ' + fmtDate(x.added) : ''}</span>
+        ${hidden.disabled ? '' : `<button type="button" class="btn sm ghost" data-filesrm="${i}">Entfernen</button>`}</li>`).join('')
+        || '<li class="muted small">Noch keine Dateien</li>';
+      $$('[data-filesrm]', box).forEach(b => b.onclick = () => {
+        const l = parseFiles(hidden.value); l.splice(Number(b.dataset.filesrm), 1);
+        hidden.value = JSON.stringify(l); draw();
+      });
+    };
+    const add = async files => {
+      for (const f of files) {
+        if (f.size > 25 * 1024 * 1024) { alert(`${f.name} ist zu groß (max. 25 MB).`); continue; }
+        toast(`Lade ${f.name} hoch ...`);
+        try {
+          const path = await uploadDataUrl(await fileToDataUrl(f), f.name, false);
+          const l = parseFiles(hidden.value); l.push({ name: f.name, path, size: f.size, added: todayStr() });
+          hidden.value = JSON.stringify(l); draw();
+        } catch (e) { alert(`${f.name} konnte nicht hochgeladen werden: ${e.message}`); }
+      }
+      toast('Hochgeladen. Zum Übernehmen speichern.');
+    };
+    $('[data-filesadd]', box).onclick = () => inp.click();
+    inp.onchange = () => { add([...inp.files]); inp.value = ''; };
+    box.ondragover = e => { if (hidden.disabled) return; e.preventDefault(); box.classList.add('over'); };
+    box.ondragleave = () => box.classList.remove('over');
+    box.ondrop = e => { e.preventDefault(); box.classList.remove('over'); if (!hidden.disabled) add([...e.dataTransfer.files]); };
+    draw();
   });
 }
 

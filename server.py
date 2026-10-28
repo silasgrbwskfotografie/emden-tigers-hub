@@ -46,7 +46,7 @@ from urllib.parse import urlparse, unquote, parse_qs
 import urllib.request
 import urllib.error
 
-VERSION = "3.0.1"
+VERSION = "3.1"
 APP_NAME = "Emden Tigers Hub"
 ENV = os.environ.get
 HOST = ENV("TMH_HOST", "127.0.0.1")
@@ -130,6 +130,7 @@ TABLES = {
         "posts_agreed": "INTEGER DEFAULT 0",
         "active": "INTEGER DEFAULT 1",
         "notes": "TEXT",
+        "files": "TEXT",                        # JSON-Liste [{name, path, size, added}]: Verträge, Rechnungen, Bilder
     },
     "media_team": {
         "name": "TEXT",
@@ -283,6 +284,10 @@ TABLE_AREA = {
 SHARED_READ = {"games", "opponents", "players", "sponsors", "media"}
 # Felder, die nur mit Finanz-Leserecht sichtbar sind
 FINANCE_FIELDS = {"sponsors": ("amount",)}
+# Felder, die nur mit Leserecht im eigenen Bereich sichtbar sind (nicht über SHARED_READ)
+AREA_FIELDS = {"sponsors": ("files",)}
+# Dateien aus data/media, die der Browser direkt anzeigen darf. Alles andere wird als Download ausgeliefert.
+MEDIA_INLINE = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf"}
 
 DEFAULT_GROUPS = [
     ("Vorstand", "Vorstand und Abteilungsleitung", {"medien": 2, "verein": 2, "mitglieder": 2, "finanzen": 2}),
@@ -948,6 +953,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype + ("; charset=utf-8" if ctype.startswith("text/") or ctype.endswith("javascript") else ""))
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Content-Type-Options", "nosniff")
         if download_name:
             self.send_header("Content-Disposition", f'attachment; filename="{download_name}"')
         self.end_headers()
@@ -1110,16 +1116,18 @@ class Handler(BaseHTTPRequestHandler):
         if head == "static" and method == "GET":
             return self.serve_under(STATIC, p[1:])
         if head == "media" and method == "GET":
-            return self.serve_under(MEDIA, p[1:])
+            return self.serve_under(MEDIA, p[1:], inline=MEDIA_INLINE)
         if head == "api":
             return self.api(method, p[1:], user)
         return self.send_error(404)
 
-    def serve_under(self, root: Path, rest):
+    def serve_under(self, root: Path, rest, inline=None):
         target = (root / "/".join(rest)).resolve()
         if root.resolve() not in target.parents and target != root.resolve():
             return self.send_error(403)
-        return self.send_file(target)
+        # Hochgeladene Dokumente (HTML, SVG, Office ...) nie im Hub-Kontext öffnen, sondern herunterladen
+        download = target.name if inline is not None and target.suffix.lower() not in inline else None
+        return self.send_file(target, download)
 
     # -- Anmeldung --------------------------------------------------------
     def api_auth(self, method, p):
@@ -1443,7 +1451,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def api_table(self, method, table, rid, perms=None):
         now = datetime.now().isoformat(timespec="seconds")
-        hide = FINANCE_FIELDS.get(table, ()) if perms is not None and perms.get("finanzen", 0) < 1 else ()
+        hide = ()
+        if perms is not None:
+            if perms.get("finanzen", 0) < 1:
+                hide += FINANCE_FIELDS.get(table, ())
+            if perms.get(TABLE_AREA.get(table), 0) < 1:
+                hide += AREA_FIELDS.get(table, ())
 
         def out(r):
             d = row_dict(r)
@@ -1512,7 +1525,11 @@ class Handler(BaseHTTPRequestHandler):
         if not m:
             return self.send_json({"error": "Ungültige Datei"}, 400)
         mime, b64 = m.groups()
-        ext = mimetypes.guess_extension(mime) or Path(name).suffix or ".bin"
+        suffix = Path(name).suffix.lower()
+        if not re.fullmatch(r"\.[a-z0-9]{1,8}", suffix):
+            suffix = ""
+        # Unbekannte Typen (z. B. .pages, .indd) behalten ihre Endung statt .bin
+        ext = (mimetypes.guess_extension(mime) if mime != "application/octet-stream" else None) or suffix or ".bin"
         if ext == ".jpe":
             ext = ".jpg"
         safe = re.sub(r"[^A-Za-z0-9_-]+", "-", Path(name).stem)[:40].strip("-") or "datei"
