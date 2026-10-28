@@ -1,5 +1,14 @@
 # Änderungen
 
+## 3.2 (28.10.2026)
+- Neu im Bereich Medien: Stadionheft planen
+  - Ausgaben mit Heimspiel, Redaktionsschluss, Druckabgabe, Canva-Link und fertigem PDF
+  - Seitenplan als Doppelseiten wie im gedruckten Heft, mit Rubrik, Verantwortlichen, Status, Text und Dateien
+  - Aufbau aus der Vorlage 2026 (36 Seiten) oder aus dem letzten Heft übernehmen
+  - Texte aus dem Hub einfügen: Kader, Coaches, Gegner mit bisherigen Duellen, Spielberichte, Interview-Fragebogen, Rückseite
+  - Hinweise: Seitenzahl nicht durch 4 teilbar, freie oder doppelte Seiten, Sponsoren ohne Anzeige, fehlende Foto-Einwilligung
+  - Erinnerung in der Übersicht ab 14 Tagen vor Redaktionsschluss
+
 ## 3.1 (28.10.2026)
 - Sponsoren: beliebige Dateien ablegen (Verträge, Rechnungen, Bilder, Druckdaten), sichtbar für alle mit Zugriff auf Sponsoren
 - Versionsnummer klein oben am Logo

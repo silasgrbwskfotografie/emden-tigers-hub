@@ -32,7 +32,7 @@ async function load(table, force = false) {
 function invalidate(...tables) { tables.forEach(t => delete App.cache[t]); }
 async function loadAll(...tables) { return Promise.all(tables.map(t => load(t))); }
 
-const APP_VERSION = '3.1';
+const APP_VERSION = '3.2';
 async function checkVersion() {
   try {
     const info = await api('');
@@ -46,7 +46,7 @@ async function checkVersion() {
 
 /* ---------- Rechte ---------- */
 const PAGE_AREA = {
-  posts: 'medien', social: 'medien', media: 'medien', team: 'medien',
+  posts: 'medien', social: 'medien', media: 'medien', team: 'medien', magazine: 'medien',
   games: 'verein', players: 'verein', opponents: 'verein', sponsors: 'verein',
   members: 'mitglieder', finance: 'finanzen', cards: 'finanzen',
   accounts: 'admin', groups: 'admin', settings: 'admin',
@@ -303,6 +303,7 @@ function bindFileFields(root) {
     box.ondragover = e => { if (hidden.disabled) return; e.preventDefault(); box.classList.add('over'); };
     box.ondragleave = () => box.classList.remove('over');
     box.ondrop = e => { e.preventDefault(); box.classList.remove('over'); if (!hidden.disabled) add([...e.dataTransfer.files]); };
+    box.redraw = draw;  // nach Änderung von außen (z. B. Dateien vom Sponsor übernehmen)
     draw();
   });
 }

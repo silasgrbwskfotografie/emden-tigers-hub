@@ -46,7 +46,7 @@ from urllib.parse import urlparse, unquote, parse_qs
 import urllib.request
 import urllib.error
 
-VERSION = "3.1"
+VERSION = "3.2"
 APP_NAME = "Emden Tigers Hub"
 ENV = os.environ.get
 HOST = ENV("TMH_HOST", "127.0.0.1")
@@ -234,6 +234,34 @@ TABLES = {
         "tags": "TEXT",
         "created": "TEXT",
     },
+    "magazines": {                              # Stadionheft: ein Eintrag pro Ausgabe
+        "season": "TEXT",
+        "number": "TEXT",                          # z. B. 1 von 4
+        "title": "TEXT DEFAULT 'Tigers Inteam'",
+        "game_id": "INTEGER",
+        "status": "TEXT DEFAULT 'Planung'",        # Planung / In Arbeit / Im Druck / Fertig
+        "deadline": "TEXT",                        # Redaktionsschluss
+        "print_date": "TEXT",                      # Druckabgabe
+        "pages_target": "INTEGER",
+        "canva_url": "TEXT",
+        "files": "TEXT",                           # JSON-Liste wie bei sponsors.files
+        "notes": "TEXT",
+    },
+    "magazine_pages": {                         # Seitenplan eines Stadionhefts
+        "magazine_id": "INTEGER",
+        "page": "INTEGER",
+        "section": "TEXT",                         # Cover / Vorwort / Anzeige / Kader / Spielbericht ...
+        "title": "TEXT",
+        "owner": "TEXT",
+        "status": "TEXT DEFAULT 'Offen'",          # Offen / Text da / Bilder da / Fertig in Canva
+        "sponsor_id": "INTEGER",
+        "player_id": "INTEGER",
+        "game_id": "INTEGER",
+        "opponent_id": "INTEGER",
+        "text": "TEXT",
+        "files": "TEXT",
+        "notes": "TEXT",
+    },
 }
 
 DEFAULT_SETTINGS = {
@@ -275,7 +303,7 @@ DB_LOCK = threading.RLock()   # exklusiv beim Einspielen eines Backups
 AREAS = {"medien": "Medien", "verein": "Verein", "mitglieder": "Mitglieder", "finanzen": "Finanzen"}
 TABLE_AREA = {
     "posts": "medien", "media": "medien", "sheet_players": "medien", "sheet_log": "medien",
-    "media_team": "medien", "assignments": "medien",
+    "media_team": "medien", "assignments": "medien", "magazines": "medien", "magazine_pages": "medien",
     "games": "verein", "opponents": "verein", "players": "verein", "sponsors": "verein",
     "members": "mitglieder",
     "supporter_cards": "finanzen", "transactions": "finanzen",
@@ -1502,6 +1530,8 @@ class Handler(BaseHTTPRequestHandler):
                     conn.execute("DELETE FROM assignments WHERE member_id=?", (rid,))
                 if table == "members":
                     conn.execute("UPDATE users SET member_id=NULL WHERE member_id=?", (rid,))
+                if table == "magazines":
+                    conn.execute("DELETE FROM magazine_pages WHERE magazine_id=?", (rid,))
                 return self.send_json({"ok": True})
 
         return self.send_json({"error": "Methode nicht erlaubt"}, 405)
