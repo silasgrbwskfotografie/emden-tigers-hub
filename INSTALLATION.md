@@ -141,6 +141,15 @@ Unter **Medien > Auto-Posting** verbindet ein Admin die Facebook-Seite. Dafür b
 - Das Token liegt nur in der Datenbank des Servers und ist nicht im Backup-Download enthalten.
 - Für **Statistik** und die Ansicht **Online** braucht das Token zusätzlich die Berechtigungen `read_insights` und `instagram_manage_insights`. Ein älteres Token dafür neu erzeugen und unter Einrichtung eintragen.
 
+## E-Mail-Benachrichtigungen
+
+Unter **Verwaltung > Einstellungen > E-Mail-Versand** trägt ein Admin das Postfach ein, über das der Hub Mails verschickt (Mailserver, Port, Benutzer, Passwort, Absender, Adresse des Hubs). Bei Gmail ein **App-Passwort** verwenden. Mit „Test-Mail senden“ prüfen.
+Danach wählt jeder unter **Mein Profil** selbst, welche Benachrichtigungen er bekommt.
+
+## Hub als App aufs Handy
+
+Auf dem Server mit Domain (https) den Hub im Handy-Browser öffnen und **Zum Startbildschirm hinzufügen** wählen (Android: Menü ⋮, iPhone: Teilen-Symbol). Der Hub öffnet sich dann wie eine App ohne Browserleiste.
+
 ## Lokal testen (am PC)
 
 `Start.bat` startet den Hub lokal zum Ausprobieren (braucht Python 3). Beim ersten Start legst du im Browser einen Zugang an. Die lokalen Daten liegen im Ordner `data/` und werden nicht ins Repository übernommen.

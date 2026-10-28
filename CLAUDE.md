@@ -33,7 +33,10 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
 
 ## Sicherheit (nicht aufweichen)
 
-- Alles außer `/login`, `/setup`, `/invite`, `/healthz`, `/bestellen`, `/teilen`, `style.css`, `logo.png`, `icon.png` braucht eine Sitzung.
+- Alles außer `/login`, `/setup`, `/invite`, `/healthz`, `/bestellen`, `/teilen`, `/manifest.webmanifest`, `/sw.js`, `style.css`, `logo.png`, `icon.png`, `icon-192.png`, `icon-512.png` braucht eine Sitzung.
+- `sw.js` speichert bewusst nichts zwischen (keine Vereinsdaten offline auf dem Handy).
+- Änderungsprotokoll `audit_log` (nicht in `TABLES`, nur `/api/admin/log`, nicht im Backup-Download). `api_table` schreibt bei jedem Anlegen, Ändern, Löschen mit; neue Sonderaktionen mit `audit(...)` ergänzen.
+- E-Mail: SMTP-Zugang in `secrets`, Passwort nie über die API. `notify(kind, ...)` schickt nur an Abonnenten mit passendem Leserecht (`NOTIFY_KINDS`), jede Mail einzeln.
 - `/teilen/<sig>/<datei>`: einzelne Bilder aus `data/media` für Instagram (Meta holt Bilder selbst ab). Nur mit HMAC-Signatur (`share_sig`, Schlüssel `share_key` in `secrets`), nur Bildendungen (`SHARE_EXT`).
 - Auto-Posting: Seiten-Token und Schlüssel in der Tabelle `secrets` (nicht in `TABLES`, nicht über die API lesbar, aus dem Backup-Download entfernt, beim Restore behalten). Verbindung einrichten nur Admins (`/api/social/connection`).
   `social_loop` postet nur freigegebene Posts (`auto_publish`) und Story-Regeln, markiert vorher `publish_state='läuft'` (nie doppelt). `SERVER_FIELDS` setzt nur der Server.
@@ -62,6 +65,8 @@ python3 -c "import ast; ast.parse(open('server.py').read())"
 node --check static/app.js static/pages.js static/captions.js
 docker compose up -d --build                # kompletter Stack wie auf dem Server (braucht .env)
 ```
+
+Nur für lokale Tests: `TMH_GRAPH_URL` (nachgebaute Meta-API), `TMH_NOTIFY_INTERVAL` und `TMH_DIGEST_SECONDS` (Benachrichtigungen schneller). Auf dem Server nie setzen.
 
 Rechte immer mit mehreren Testkonten prüfen (Admin, Spieler, Media Team, Helfer mit Ausnahme): sichtbare Menüpunkte, Knöpfe, und dass der Server verbotene Aktionen mit 403 ablehnt.
 

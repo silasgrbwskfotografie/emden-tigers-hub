@@ -103,7 +103,10 @@ const F = {
     { key: 'sponsor_id', label: 'Sponsor', type: 'ref', ref: { table: 'sponsors', label: sponsorLabel } },
     { key: 'player_id', label: 'Spieler / Coach', type: 'ref', ref: { table: 'players', label: playerLabel } },
     { key: 'posted_url', label: 'Link zum Post' },
-    { key: 'auto_publish', label: 'Automatisch posten (Freigabe)', type: 'check', hint: 'Geht zu Datum und Uhrzeit oben automatisch raus. Möglich: Feed-Post und Story mit Bild.' },
+    { key: 'media', label: 'Bilder fürs Karussell (2 bis 10) bzw. Video fürs Reel', type: 'files', full: true, maxMb: 40,
+      accept: 'image/jpeg,image/png,video/mp4,video/quicktime', show: v => ['Karussell', 'Reel'].includes(v.format),
+      hint: 'Karussell: JPG oder PNG in der gewünschten Reihenfolge. Reel: ein Video als MP4 im Hochformat, höchstens 40 MB.' },
+    { key: 'auto_publish', label: 'Automatisch posten (Freigabe)', type: 'check', hint: 'Geht zu Datum und Uhrzeit oben automatisch raus: Feed-Post, Story, Karussell oder Reel.' },
     { key: 'targets', label: 'Posten auf', type: 'select', options: SOCIAL_TARGETS, show: v => Number(v.auto_publish) },
     { key: 'notes', label: 'Notizen', type: 'textarea', rows: 2 },
   ],
@@ -1079,6 +1082,7 @@ async function apparelDetail(view, id) {
   if (!a) { view.innerHTML = '<div class="card empty">Diesen Artikel gibt es nicht mehr. <a href="#/apparel">Zur Übersicht</a></div>'; return; }
   const aw = can(APPAREL_AREAS, 2), fields = apFields(a), orders = apOrders(id), price = Number(a.price) || 0;
   const pcs = orders.reduce((s, o) => s + apQty(o), 0), openPcs = orders.filter(o => !Number(o.paid)).reduce((s, o) => s + apQty(o), 0);
+  const toBook = orders.filter(o => Number(o.paid) && !o.booked_tx), toBookPcs = toBook.reduce((s, o) => s + apQty(o), 0);
   const rerender = async () => { const st = $('#main').scrollTop; await Promise.all([load('apparel', true), load('apparel_orders', true)]); await apparelDetail(view, id); $('#main').scrollTop = st; };
 
   // Stückzahl pro Auswahl (z. B. Größe), nach Menge gewichtet
@@ -1103,6 +1107,9 @@ async function apparelDetail(view, id) {
       <div class="card stat"><span>Stück</span><b>${pcs}</b></div>
       ${price ? `<div class="card stat"><span>Summe</span><b>${eur(price * pcs)}</b></div>
       <div class="card stat"><span>Noch nicht bezahlt</span><b style="color:${openPcs ? 'var(--red)' : 'var(--ok)'}">${eur(price * openPcs)}</b></div>` : ''}</div>
+    ${price && can('finanzen', 2) ? `<div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div><b>Finanzen</b><div class="muted small">${toBook.length ? `${toBook.length} bezahlte Bestellung${toBook.length > 1 ? 'en' : ''} (${toBookPcs} Stück, ${eur(price * toBookPcs)}) noch nicht gebucht.` : 'Alle bezahlten Bestellungen sind gebucht.'}</div></div>
+      ${toBook.length ? '<button class="btn primary" id="ap_book">In die Finanzen übernehmen</button>' : '<a class="btn" href="#/finance">Zu den Buchungen</a>'}</div>` : ''}
     <div class="grid g2" style="margin-bottom:16px">
       <div class="card"><h2>Bestell-Link</h2><code class="ap-link">${esc(apLink(a))}</code>
         <div class="muted small" style="margin:8px 0">Jeder mit diesem Link kann ohne Anmeldung bestellen${Number(a.show_list) ? ' und die bisherigen Bestellungen sehen (ohne interne Felder und ohne „bezahlt“)' : ''}.
@@ -1115,13 +1122,18 @@ async function apparelDetail(view, id) {
     <div class="table-wrap"><table><thead><tr>${fields.map(f => `<th>${esc(f.label)}${f.internal ? ' <span class="muted small">(intern)</span>' : ''}</th>`).join('')}<th>Menge</th>${price ? '<th>Summe</th>' : ''}<th>Bezahlt</th><th>Eingang</th><th></th></tr></thead><tbody>
       ${orders.map(o => { const d = apData(o); return `<tr>${fields.map(f => `<td>${esc(apValue(f, d[f.key]))}</td>`).join('')}
         <td>${apQty(o)}</td>${price ? `<td>${eur(price * apQty(o))}</td>` : ''}
-        <td><input type="checkbox" data-paid="${o.id}" ${Number(o.paid) ? 'checked' : ''} ${aw ? '' : 'disabled'}></td>
+        <td><input type="checkbox" data-paid="${o.id}" ${Number(o.paid) ? 'checked' : ''} ${aw && !o.booked_tx ? '' : 'disabled'}>${o.booked_tx ? ' <span class="badge ok" title="In den Finanzen gebucht">gebucht</span>' : ''}</td>
         <td class="small muted">${fmtDate((o.created || o.created_at || '').slice(0, 10))}${o.source ? ' | ' + esc(o.source) : ''}</td>
         <td class="actions"><button class="btn sm ghost keep" data-o="${o.id}">${aw ? 'Bearbeiten' : 'Ansehen'}</button></td></tr>`; }).join('')
         || `<tr><td colspan="${fields.length + (price ? 6 : 5)}" class="empty">Noch keine Bestellungen.</td></tr>`}
     </tbody></table></div>`;
 
   $('#ap_copylink').onclick = () => copyText(apLink(a));
+  if ($('#ap_book')) $('#ap_book').onclick = async () => {
+    if (!confirmBox(`Eine Einnahme über ${eur(price * toBookPcs)} für ${toBook.length} bezahlte Bestellung${toBook.length > 1 ? 'en' : ''} anlegen?`)) return;
+    try { const r = await api(`apparel/${id}/book`, 'POST', {}); invalidate('transactions'); toast(`Gebucht: ${eur(r.amount)}`); rerender(); }
+    catch (e) { alert(e.message); }
+  };
   $('#ap_copysum').onclick = () => copyText(noDashes(supplierText));
   $('#ap_csv').onclick = () => downloadCsv(`${slug(a.name || 'teamkleidung')}-bestellungen.csv`,
     [...fields.map(f => f.label), 'Menge', 'Einzelpreis', 'Summe', 'Bezahlt', 'Eingang', 'Quelle', 'Notizen'],
@@ -1213,6 +1225,50 @@ function editApparelFields(a) {
   });
 }
 
+/* ====================================================================== */
+/* Änderungsprotokoll (nur Admins) */
+const TABLE_NAMES = { posts: 'Postplan', games: 'Spielplan', players: 'Kader & Staff', opponents: 'Gegner', sponsors: 'Sponsoren', media: 'Mediathek',
+  media_team: 'Media Team', assignments: 'Einteilung', members: 'Mitglieder', transactions: 'Buchungen', supporter_cards: 'Supporter Karte',
+  magazines: 'Stadionheft', magazine_pages: 'Stadionheft-Beitrag', apparel: 'Teamkleidung', apparel_orders: 'Bestellung', story_rules: 'Story-Regel',
+  settings: 'Einstellungen', social: 'Auto-Posting', users: 'Konten', groups: 'Gruppen', backup: 'Backup', sheet_players: 'Social Media Spieler' };
+
+App.pages.log = async (view) => {
+  const rows = await api('admin/log?limit=1000');
+  let q = '', tbl = '', who = '';
+  const tables = [...new Set(rows.map(r => r.table_name).filter(Boolean))].sort((a, b) => (TABLE_NAMES[a] || a).localeCompare(TABLE_NAMES[b] || b));
+  const users = [...new Set(rows.map(r => r.user_name).filter(Boolean))].sort();
+  const details = r => {
+    let d; try { d = JSON.parse(r.details || 'null'); } catch { d = null; }
+    if (!d || typeof d !== 'object') return '';
+    return Object.entries(d).map(([k, v]) => Array.isArray(v)
+      ? `<div><b>${esc(k)}</b>: <span class="muted">${esc(v[0] || 'leer')}</span> → ${esc(v[1] || 'leer')}</div>`
+      : `<div><b>${esc(k)}</b>: ${esc(typeof v === 'object' ? JSON.stringify(v) : v)}</div>`).join('');
+  };
+  const cls = a => a.startsWith('gelöscht') ? 'red' : a.startsWith('neu') ? 'ok' : a.startsWith('geändert') ? 'warn' : '';
+  const draw = () => {
+    const ql = q.toLowerCase();
+    const list = rows.filter(r => (!tbl || r.table_name === tbl) && (!who || r.user_name === who)
+      && (!ql || [r.label, r.action, r.user_name, r.details, TABLE_NAMES[r.table_name]].join(' ').toLowerCase().includes(ql)));
+    $('#lg_rows').innerHTML = list.map(r => `<tr><td class="small" style="white-space:nowrap">${fmtStamp(r.time)}</td><td>${esc(r.user_name || '')}</td>
+      <td><span class="badge ${cls(r.action || '')}">${esc(r.action || '')}</span></td><td>${esc(TABLE_NAMES[r.table_name] || r.table_name || '')}</td>
+      <td>${esc(r.label || '')}${r.record_id ? ` <span class="muted small">#${r.record_id}</span>` : ''}
+        ${r.details ? `<details class="small"><summary>Details</summary>${details(r)}</details>` : ''}</td></tr>`).join('')
+      || '<tr><td colspan="5" class="empty">Keine Einträge.</td></tr>';
+    $('#lg_count').textContent = `${list.length} von ${rows.length} Einträgen`;
+  };
+  view.innerHTML = `
+    <div class="page-head"><h1>Protokoll<small>Wer hat wann was angelegt, geändert oder gelöscht. Einträge werden nach gut einem Jahr entfernt.</small></h1></div>
+    <div class="toolbar"><input class="input" id="lg_q" placeholder="Suchen (Name, Eintrag, Inhalt)" style="max-width:280px">
+      <select class="input" id="lg_t"><option value="">Alle Bereiche</option>${tables.map(t => `<option value="${esc(t)}">${esc(TABLE_NAMES[t] || t)}</option>`).join('')}</select>
+      <select class="input" id="lg_u"><option value="">Alle Personen</option>${users.map(u => `<option>${esc(u)}</option>`).join('')}</select>
+      <span class="muted small" id="lg_count"></span></div>
+    <div class="table-wrap"><table><thead><tr><th>Zeit</th><th>Wer</th><th>Aktion</th><th>Bereich</th><th>Eintrag</th></tr></thead><tbody id="lg_rows"></tbody></table></div>`;
+  $('#lg_q').oninput = e => { q = e.target.value; draw(); };
+  $('#lg_t').onchange = e => { tbl = e.target.value; draw(); };
+  $('#lg_u').onchange = e => { who = e.target.value; draw(); };
+  draw();
+};
+
 App.pages.cards = async (view) => {
   const s = App.settings;
   return simpleList({
@@ -1279,7 +1335,33 @@ App.pages.settings = async (view) => {
       <div class="btn-row"><a class="btn dark" href="/api/backup">Backup herunterladen (ZIP)</a><a class="btn" href="/api/export" download="emden-tigers-hub-export.json">Daten als JSON</a>
         <button class="btn" id="rs_btn">Backup einspielen</button><input type="file" id="rs_file" accept=".zip,.db" hidden></div>
       <div class="hint" style="margin-top:8px">Einspielen ersetzt alle Vereinsdaten durch das Backup (z. B. aus einer älteren Version). Vorher wird automatisch eine Sicherung angelegt. Konten, Gruppen und Rechte bleiben erhalten.</div>
-      <div id="bk_list" class="small muted" style="margin-top:10px"></div></div>`;
+      <div id="bk_list" class="small muted" style="margin-top:10px"></div></div>
+    <div class="card" style="margin-top:16px" id="mail_card"><h2>E-Mail-Versand für Benachrichtigungen</h2><div class="muted">Lade ...</div></div>`;
+  const mailCard = async () => {
+    const c = await api('notify');
+    $('#mail_card').innerHTML = `<h2>E-Mail-Versand für Benachrichtigungen</h2>
+      <p class="muted small">Über dieses Postfach verschickt der Hub die Benachrichtigungen, die jeder unter „Mein Profil“ auswählt. Bei Gmail ein App-Passwort verwenden.</p>
+      <div class="form">
+        <div class="field"><label for="ml_host">Mailserver (SMTP)</label><input class="input" id="ml_host" value="${esc(c.smtp_host || '')}" placeholder="z. B. smtp.gmail.com"></div>
+        <div class="field"><label for="ml_port">Port</label><input class="input" id="ml_port" value="${esc(c.smtp_port || '')}" placeholder="587"></div>
+        <div class="field"><label for="ml_sec">Verschlüsselung</label><select class="input" id="ml_sec">${[['starttls', 'STARTTLS (Port 587)'], ['ssl', 'SSL/TLS (Port 465)'], ['none', 'keine']].map(([v, l]) => `<option value="${v}" ${(c.smtp_security || 'starttls') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div class="field"><label for="ml_user">Benutzername</label><input class="input" id="ml_user" value="${esc(c.smtp_user || '')}" autocomplete="off"></div>
+        <div class="field"><label for="ml_pw">Passwort</label><input class="input" id="ml_pw" type="password" autocomplete="new-password" placeholder="${c.password_set ? 'hinterlegt, nur zum Ändern neu eintragen' : ''}"></div>
+        <div class="field"><label for="ml_from">Absender</label><input class="input" id="ml_from" value="${esc(c.smtp_from || '')}" placeholder="z. B. Emden Tigers Hub &lt;hub@verein.de&gt;"></div>
+        <div class="field full"><label for="ml_url">Adresse des Hubs für Links in der Mail</label><input class="input" id="ml_url" value="${esc(c.hub_url || '')}" placeholder="z. B. https://hub.emdentigers.de"></div></div>
+      ${c.last_error ? `<div class="warnline" style="margin-top:8px">Letzter Fehler beim Versand: ${esc(c.last_error)}</div>` : ''}
+      <div class="btn-row" style="margin-top:12px"><button class="btn primary" id="ml_save">Speichern</button>
+        <input class="input" id="ml_to" placeholder="Test an E-Mail-Adresse" style="max-width:240px"><button class="btn" id="ml_test">Test-Mail senden</button></div>`;
+    $('#ml_save').onclick = async () => {
+      await api('notify', 'PUT', { smtp_host: $('#ml_host').value, smtp_port: $('#ml_port').value, smtp_security: $('#ml_sec').value,
+        smtp_user: $('#ml_user').value, smtp_password: $('#ml_pw').value, smtp_from: $('#ml_from').value, hub_url: $('#ml_url').value });
+      toast('E-Mail-Versand gespeichert'); mailCard();
+    };
+    $('#ml_test').onclick = async () => {
+      try { await api('notify/test', 'POST', { to: $('#ml_to').value }); toast('Test-Mail verschickt'); } catch (e) { alert(e.message); }
+    };
+  };
+  mailCard().catch(() => {});
   $$('input[name="color_primary"]').forEach(i => i.type = 'color');
   bindImageFields($('#st_form'));
   $('#st_save').onclick = async () => {
@@ -1407,8 +1489,12 @@ async function planPost(rec = {}) {
           if (!f.date || !f.time) w.push('Automatisch posten: Datum und Uhrzeit fehlen.');
           else if (new Date(`${f.date}T${f.time}`) < new Date(Date.now() - 24 * 3600 * 1000)) w.push('Automatisch posten: Der Zeitpunkt liegt mehr als 24 Stunden zurück, der Post wird nicht mehr automatisch gepostet.');
           else if (new Date(`${f.date}T${f.time}`) < new Date()) w.push('Automatisch posten: Der Zeitpunkt liegt in der Vergangenheit, der Post geht nach dem Speichern innerhalb einer Minute raus.');
-          if (['Reel', 'Karussell'].includes(f.format)) w.push(`Automatisch posten: ${f.format} wird noch nicht unterstützt, nur Feed und Story.`);
-          if (!f.image && (f.format === 'Story' || /instagram/i.test(f.targets))) w.push('Automatisch posten: Für Storys und Instagram wird ein Bild gebraucht.');
+          const media = parseFiles(f.media), ext = m => (m.path.split('.').pop() || '').toLowerCase();
+          if (f.format === 'Karussell' && (media.length < 2 || media.length > 10 || media.some(m => !['jpg', 'jpeg', 'png', 'webp'].includes(ext(m)))))
+            w.push('Automatisch posten: Ein Karussell braucht 2 bis 10 Bilder (JPG oder PNG).');
+          if (f.format === 'Reel' && (media.length !== 1 || !['mp4', 'mov'].includes(ext(media[0]))))
+            w.push('Automatisch posten: Ein Reel braucht genau ein Video (MP4 oder MOV).');
+          if (!f.image && (f.format === 'Story' || (f.format === 'Feed' && /instagram/i.test(f.targets)))) w.push('Automatisch posten: Für Storys und Instagram wird ein Bild gebraucht.');
           if (/instagram/i.test(f.targets) && social.connected && !social.instagram) w.push('Automatisch posten: Mit der Facebook-Seite ist kein Instagram-Konto verknüpft.');        }
         $('#pp_warn', box).innerHTML = w.map(x => `<div class="warnline">⚠ ${x}</div>`).join('');
         const fx = $('#pp_fix', box); if (fx) fx.onclick = () => { cap.value = noDashes(cap.value); check(); };
@@ -1506,7 +1592,19 @@ App.pages.profile = async (view) => {
         </form>
         <div class="btn-row" style="margin-top:12px"><button class="btn primary" id="pf_save">Daten speichern</button></div>`
       : '<div class="muted">Dein Zugang ist noch keinem Mitgliedsprofil zugeordnet. Das macht der Admin unter Konten.</div>'}
-    </div>`;
+    </div>
+    ${prof.notify_kinds.length ? `<div class="card" style="margin-top:16px"><h2>Benachrichtigungen per E-Mail</h2>
+      ${prof.mail_ready ? '' : '<div class="warnline" style="margin-bottom:8px">Der E-Mail-Versand ist noch nicht eingerichtet (Admin: Einstellungen). Deine Auswahl gilt, sobald er läuft.</div>'}
+      <div class="form"><div class="field full"><label for="nf_email">E-Mail-Adresse für Benachrichtigungen</label>
+        <input class="input" id="nf_email" type="email" value="${esc(prof.account.email || m?.email || '')}" placeholder="name@beispiel.de"></div>
+        ${prof.notify_kinds.map(k => `<div class="field full"><label class="check"><input type="checkbox" data-nf="${k.key}" ${(() => { try { return JSON.parse(prof.account.notify || '[]'); } catch { return []; } })().includes(k.key) ? 'checked' : ''}> ${esc(k.label)}</label></div>`).join('')}</div>
+      <div class="btn-row" style="margin-top:10px"><button class="btn" id="nf_save">Benachrichtigungen speichern</button></div></div>` : ''}`;
+  if ($('#nf_save')) $('#nf_save').onclick = async () => {
+    try {
+      await api('profile', 'PUT', { notify_email: $('#nf_email').value.trim(), notify: $$('[data-nf]').filter(c => c.checked).map(c => c.dataset.nf) });
+      toast('Benachrichtigungen gespeichert');
+    } catch (e) { alert(e.message); }
+  };
   $('#pf_dn_save').onclick = async () => { await api('profile', 'PUT', { display_name: $('#pf_dn').value }); App.me = await api('me'); renderSideFoot(); toast('Gespeichert'); };
   $('#pw_save').onclick = async () => {
     if ($('#pw_new').value !== $('#pw_new2').value) return alert('Die neuen Passwörter stimmen nicht überein.');

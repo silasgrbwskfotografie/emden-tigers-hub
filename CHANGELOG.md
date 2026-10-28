@@ -1,5 +1,12 @@
 # Änderungen
 
+## 3.7 (28.10.2026)
+- Hub als App aufs Handy: zum Startbildschirm hinzufügen, auf dem Handy Menü als Schublade mit Leiste oben
+- Änderungsprotokoll (Verwaltung > Protokoll, nur Admins): wer hat wann was angelegt, geändert oder gelöscht, mit alten und neuen Werten
+- Benachrichtigungen per E-Mail: jeder wählt unter „Mein Profil“ selbst (fehlgeschlagene und erfolgreiche Auto-Posts, Redaktionsschluss Stadionheft, neue Bestellungen, Bestellschluss Teamkleidung). E-Mail-Versand richtet ein Admin unter Einstellungen ein
+- Teamkleidung: Bestellbestätigung mit Bestellnummer auf dem Bildschirm, Sammelbuchung „In die Finanzen übernehmen“ für bezahlte Bestellungen
+- Auto-Posting: Karussell (2 bis 10 Bilder) und Reel (Video bis 40 MB) auf Facebook und Instagram
+
 ## 3.6 (28.10.2026)
 - Auto-Posting mit Reitern: Kalender, Online, Statistik, Einrichtung & Storys
   - Kalender: geplante Posts (automatisch, ohne Freigabe, gepostet, Fehler) und wiederkehrende Storys pro Monat, Klick auf einen Tag plant einen Post

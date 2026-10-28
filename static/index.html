@@ -5,9 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Emden Tigers Hub</title>
 <link rel="icon" href="/static/icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<meta name="theme-color" content="#0B0B0B">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Tigers Hub">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+<header id="topbar"><button id="navToggle" aria-label="Menü öffnen">☰</button><b>Emden Tigers Hub</b></header>
+<div id="navShade"></div>
 <aside id="sidebar">
   <div class="brand">
     <div class="brand-mark" id="brandMark"><img src="/static/logo.png" alt="Emden Tigers"></div>
@@ -42,6 +49,7 @@
     <a href="#/accounts" data-page="accounts" data-area="admin">Konten</a>
     <a href="#/groups" data-page="groups" data-area="admin">Gruppen &amp; Rechte</a>
     <a href="#/settings" data-page="settings" data-area="admin">Einstellungen</a>
+    <a href="#/log" data-page="log" data-area="admin">Protokoll</a>
   </nav>
   <div class="sidebar-foot" id="sideFoot"></div>
 </aside>

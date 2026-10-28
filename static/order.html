@@ -94,9 +94,19 @@ async function send() {
       body: JSON.stringify({ data, quantity: Number(document.getElementById('f_qty').value) || 0 }) });
     const res = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(res.error || 'Fehler ' + r.status);
+    const qty = Number(document.getElementById('f_qty').value) || 1, price = Number(info.price) || 0;
     await load();
-    const m = document.getElementById('msg');
-    if (m) { m.className = 'msg ok'; m.textContent = 'Danke! Deine Bestellung ist eingegangen. Du kannst direkt eine weitere Bestellung eintragen.'; }
+    // Bestätigung auf dem Bildschirm (zum Abfotografieren), danach weitere Bestellung möglich
+    const form = document.getElementById('ordForm')?.closest('.card') || app.appendChild(Object.assign(document.createElement('div'), { className: 'card' }));
+    form.innerHTML = `<h2>Danke, deine Bestellung ist eingegangen</h2>
+      <div class="total" style="margin:6px 0 10px">Bestellnummer #${esc(res.number)}</div>
+      <div class="table-wrap"><table><tbody>${info.fields.filter(f => data[f.key] !== '' && data[f.key] !== false)
+        .map(f => `<tr><td class="muted">${esc(f.label)}</td><td><b>${f.type === 'check' ? 'ja' : esc(data[f.key])}</b></td></tr>`).join('')}
+        <tr><td class="muted">Menge</td><td><b>${qty}</b></td></tr>${price ? `<tr><td class="muted">Summe</td><td><b>${eur(price * qty)}</b></td></tr>` : ''}</tbody></table></div>
+      <p class="muted small" style="margin-top:10px">Mach am besten einen Screenshot. Änderungen bitte direkt beim Verein melden und die Bestellnummer angeben.</p>
+      <div class="btn-row"><button class="btn primary" id="again">Weitere Bestellung eintragen</button></div>`;
+    document.getElementById('again').onclick = render;
+    form.scrollIntoView({ behavior: 'smooth' });
   } catch (e) {
     msg.className = 'msg err'; msg.textContent = e.message; btn.disabled = false;
   }

@@ -32,7 +32,7 @@ async function load(table, force = false) {
 function invalidate(...tables) { tables.forEach(t => delete App.cache[t]); }
 async function loadAll(...tables) { return Promise.all(tables.map(t => load(t))); }
 
-const APP_VERSION = '3.6';
+const APP_VERSION = '3.7';
 async function checkVersion() {
   try {
     const info = await api('');
@@ -51,7 +51,7 @@ const PAGE_AREA = {
   posts: 'medien', autopost: 'medien', social: 'medien', media: 'medien', team: 'medien', magazine: 'medien',
   games: 'verein', players: 'verein', opponents: 'verein', sponsors: 'verein', apparel: APPAREL_AREAS,
   members: 'mitglieder', finance: 'finanzen', cards: 'finanzen',
-  accounts: 'admin', groups: 'admin', settings: 'admin',
+  accounts: 'admin', groups: 'admin', settings: 'admin', log: 'admin',
 };
 function can(area, lvl = 1) {
   const me = App.me; if (!me) return false;
@@ -231,9 +231,9 @@ function fieldHtml(f, val) {
       input = `<div class="files-field" data-filesbox="${f.key}">
         <input type="hidden" id="${id}" name="${f.key}" value="${esc(JSON.stringify(parseFiles(v)))}">
         <ul class="file-list" id="${id}_list"></ul>
-        <input type="file" id="${id}_file" multiple hidden>
-        <div class="btn-row"><button type="button" class="btn sm" data-filesadd="${f.key}">Dateien hinzufügen</button>
-        <span class="hint">oder hierher ziehen, max. 25 MB pro Datei</span></div></div>`; break;
+        <input type="file" id="${id}_file" multiple hidden ${f.accept ? `accept="${esc(f.accept)}"` : ''}>
+        <div class="btn-row"><button type="button" class="btn sm" data-filesadd="${f.key}" data-maxmb="${f.maxMb || 25}">Dateien hinzufügen</button>
+        <span class="hint">oder hierher ziehen, max. ${f.maxMb || 25} MB pro Datei</span></div></div>`; break;
     case 'image':
       input = `<div class="img-field"><img id="${id}_prev" ${v ? `src="${esc(v)}"` : 'style="opacity:.3"'} alt="">
         <input type="hidden" id="${id}" name="${f.key}" value="${esc(v)}">
@@ -291,9 +291,10 @@ function bindFileFields(root) {
         hidden.value = JSON.stringify(l); draw();
       });
     };
+    const maxMb = Number($('[data-filesadd]', box).dataset.maxmb) || 25;
     const add = async files => {
       for (const f of files) {
-        if (f.size > 25 * 1024 * 1024) { alert(`${f.name} ist zu groß (max. 25 MB).`); continue; }
+        if (f.size > maxMb * 1024 * 1024) { alert(`${f.name} ist zu groß (max. ${maxMb} MB).`); continue; }
         toast(`Lade ${f.name} hoch ...`);
         try {
           const path = await uploadDataUrl(await fileToDataUrl(f), f.name, false);
@@ -430,11 +431,18 @@ async function route() {
     App.readOnly = true;
   }
   document.body.toggleAttribute('data-ro', App.readOnly);
+  document.body.classList.remove('nav-open');
+  if (window.innerWidth <= 700) window.scrollTo(0, 0);
   try { await fn(view, args); }
   catch (e) { view.innerHTML = `<div class="card">Fehler: ${esc(e.message)}</div>`; console.error(e); }
   $('#main').scrollTop = 0;
 }
 window.addEventListener('hashchange', route);
+
+/* Handy: Menü als Schublade, App auf dem Startbildschirm */
+$('#navToggle').onclick = () => document.body.classList.toggle('nav-open');
+$('#navShade').onclick = () => document.body.classList.remove('nav-open');
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 function go(h) { if (location.hash === h) route(); else location.hash = h; }
 
 /* Start erfolgt am Ende von pages.js */

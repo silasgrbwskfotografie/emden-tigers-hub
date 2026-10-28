@@ -39,14 +39,14 @@ import threading
 import uuid
 import webbrowser
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, unquote, parse_qs, urlencode
 import urllib.request
 import urllib.error
 
-VERSION = "3.6"
+VERSION = "3.7"
 APP_NAME = "Emden Tigers Hub"
 ENV = os.environ.get
 HOST = ENV("TMH_HOST", "127.0.0.1")
@@ -171,6 +171,7 @@ TABLES = {
         "player_id": "INTEGER",
         "posted_url": "TEXT",
         "notes": "TEXT",
+        "media": "TEXT",                           # Karussell (mehrere Bilder) oder Reel (ein Video): JSON-Liste wie files
         "auto_publish": "INTEGER DEFAULT 0",       # Freigabe: zum geplanten Zeitpunkt automatisch posten
         "targets": "TEXT DEFAULT 'Facebook'",      # Facebook / Instagram / Facebook + Instagram
         "publish_state": "TEXT",                   # nur Server: läuft / gepostet / teilweise / fehler / verpasst
@@ -305,6 +306,7 @@ TABLES = {
         "source": "TEXT",                          # Link / Hub
         "created": "TEXT",
         "notes": "TEXT",
+        "booked_tx": "INTEGER",                    # nur Server: Buchung in den Finanzen (Sammelbuchung)
     },
 }
 
@@ -365,9 +367,10 @@ FINANCE_FIELDS = {"sponsors": ("amount",)}
 # Felder, die nur mit Leserecht im eigenen Bereich sichtbar sind (nicht über SHARED_READ)
 AREA_FIELDS = {"sponsors": ("files",)}
 # Felder, die nur der Server setzt (beim Speichern über die API verworfen)
-SERVER_FIELDS = {"posts": ("publish_state", "publish_log", "published_at"), "story_rules": ("last_run", "last_result")}
+SERVER_FIELDS = {"posts": ("publish_state", "publish_log", "published_at"), "story_rules": ("last_run", "last_result"),
+                 "apparel_orders": ("booked_tx",)}
 # Dateien aus data/media, die der Browser direkt anzeigen darf. Alles andere wird als Download ausgeliefert.
-MEDIA_INLINE = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf"}
+MEDIA_INLINE = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".mp4", ".mov", ".webm"}
 
 DEFAULT_GROUPS = [
     ("Vorstand", "Vorstand und Abteilungsleitung", {"medien": 2, "verein": 2, "mitglieder": 2, "finanzen": 2}),
@@ -407,7 +410,7 @@ def init_db():
                      "created_at TEXT, ip TEXT, user_agent TEXT)")
         ucols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
         for c, t in (("display_name", "TEXT"), ("email", "TEXT"), ("is_admin", "INTEGER DEFAULT 0"), ("active", "INTEGER DEFAULT 1"),
-                     ("member_id", "INTEGER"), ("invite_hash", "TEXT"), ("invite_expires", "REAL")):
+                     ("member_id", "INTEGER"), ("invite_hash", "TEXT"), ("invite_expires", "REAL"), ("notify", "TEXT")):
             if c not in ucols:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {c} {t}")
         if "role" in ucols:
@@ -419,6 +422,12 @@ def init_db():
         conn.execute("CREATE TABLE IF NOT EXISTS user_perms (user_id INTEGER, area TEXT, level INTEGER, PRIMARY KEY (user_id, area))")
         # Zugangsdaten für Facebook/Instagram: nie über die API lesbar, nicht im Backup-Download
         conn.execute("CREATE TABLE IF NOT EXISTS secrets (key TEXT PRIMARY KEY, value TEXT)")
+        # Änderungsprotokoll: nur für Admins lesbar, nicht über die allgemeine API
+        conn.execute("CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, time TEXT, user_id INTEGER, user_name TEXT, "
+                     "action TEXT, table_name TEXT, record_id INTEGER, label TEXT, details TEXT)")
+        conn.execute("CREATE INDEX IF NOT EXISTS audit_time ON audit_log (time)")
+        # Bereits verschickte Erinnerungen (jede nur einmal)
+        conn.execute("CREATE TABLE IF NOT EXISTS notify_sent (key TEXT PRIMARY KEY, time TEXT)")
         if conn.execute("SELECT COUNT(*) FROM groups").fetchone()[0] == 0:
             for i, (name, desc, perms) in enumerate(DEFAULT_GROUPS):
                 gid = conn.execute("INSERT INTO groups (name, description, sort) VALUES (?, ?, ?)", (name, desc, i)).lastrowid
@@ -654,11 +663,14 @@ def clean_order(fields, data, qty):
 # Das Seiten-Token liegt in der Tabelle secrets (nie über die API lesbar, nicht im Backup-Download).
 # Instagram holt Bilder selbst ab, dafür gibt es signierte Links /teilen/<sig>/<datei> (nur Bilder).
 # ---------------------------------------------------------------------------
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 GRAPH = ENV("TMH_GRAPH_URL") or "https://graph.facebook.com/v26.0"   # Variable nur für lokale Tests mit einem Test-Server
 SOCIAL_LOCK = threading.Lock()
 POST_LATE_HOURS = 24        # freigegebene Posts, die länger überfällig sind, werden nicht mehr nachgeholt
 STORY_LATE_MINUTES = 180    # Story-Regeln: so lange nach der geplanten Uhrzeit wird noch gepostet (z. B. nach Neustart)
-SHARE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
+SHARE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".mp4", ".mov"}
+IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
+VIDEO_EXT = {".mp4", ".mov"}
 
 
 class GraphError(Exception):
@@ -744,54 +756,111 @@ def media_bytes(path):
     return name, f.read_bytes(), mimetypes.guess_type(name)[0] or "application/octet-stream"
 
 
-def publish_facebook(cfg, image, text, story):
+def check_media(kind, image, media):
+    """Prüft, ob die Dateien zum Format passen. kind: feed / story / carousel / reel."""
+    ext = lambda p: Path(p or "").suffix.lower()
+    if kind == "story" and not image:
+        raise GraphError("Für eine Story wird ein Bild gebraucht.")
+    if kind == "carousel":
+        imgs = [m for m in media if ext(m) in IMAGE_EXT]
+        if not 2 <= len(imgs) <= 10 or len(imgs) != len(media):
+            raise GraphError("Ein Karussell braucht 2 bis 10 Bilder (JPG oder PNG), keine anderen Dateien.")
+    if kind == "reel":
+        if len(media) != 1 or ext(media[0]) not in VIDEO_EXT:
+            raise GraphError("Ein Reel braucht genau ein Video (MP4 oder MOV).")
+
+
+def publish_facebook(cfg, kind, image, media, text):
     page, tok = cfg["fb_page_id"], cfg["fb_token"]
-    if story:
-        if not image:
-            raise GraphError("Für eine Story wird ein Bild gebraucht.")
+    if kind == "story":
         up = graph("POST", f"{page}/photos", {"published": "false"}, tok, {"source": media_bytes(image)})
         res = graph("POST", f"{page}/photo_stories", {"photo_id": up["id"]}, tok)
         return res.get("post_id") or res.get("id") or ""
+    if kind == "carousel":   # Beitrag mit mehreren Bildern: erst unveröffentlicht hochladen, dann gemeinsam posten
+        ids = [graph("POST", f"{page}/photos", {"published": "false"}, tok, {"source": media_bytes(m)})["id"] for m in media]
+        params = {"message": text or "", **{f"attached_media[{i}]": json.dumps({"media_fbid": pid}) for i, pid in enumerate(ids)}}
+        return graph("POST", f"{page}/feed", params, tok).get("id", "")
+    if kind == "reel":       # Reels-API: Start, Video hochladen, Veröffentlichen
+        name, data, _ = media_bytes(media[0])
+        start = graph("POST", f"{page}/video_reels", {"upload_phase": "start"}, tok)
+        req = urllib.request.Request(start["upload_url"], data=data, method="POST",
+                                     headers={"Authorization": f"OAuth {tok}", "offset": "0", "file_size": str(len(data))})
+        try:
+            with urllib.request.urlopen(req, timeout=600) as r:
+                json.loads(r.read().decode("utf-8") or "{}")
+        except urllib.error.HTTPError as e:
+            raise GraphError(f"Video-Upload fehlgeschlagen ({e.code})")
+        except urllib.error.URLError as e:
+            raise GraphError(f"Video-Upload fehlgeschlagen ({e.reason})")
+        graph("POST", f"{page}/video_reels", {"upload_phase": "finish", "video_id": start["video_id"],
+                                               "video_state": "PUBLISHED", "description": text or ""}, tok)
+        return start["video_id"]
     if image:
         res = graph("POST", f"{page}/photos", {"caption": text or "", "published": "true"}, tok, {"source": media_bytes(image)})
         return res.get("post_id") or res.get("id") or ""
     return graph("POST", f"{page}/feed", {"message": text or ""}, tok).get("id", "")
 
 
-def publish_instagram(cfg, image, text, story):
+def ig_wait(cfg, box_id, tries=20, delay=3):
+    """Instagram verarbeitet Bilder/Videos erst, danach kann veröffentlicht werden."""
+    for _ in range(tries):
+        st = graph("GET", box_id, {"fields": "status_code"}, cfg["fb_token"]).get("status_code")
+        if st == "FINISHED":
+            return
+        if st in ("ERROR", "EXPIRED"):
+            raise GraphError("Instagram konnte die Datei nicht verarbeiten (JPG im Format 4:5, Storys 9:16, Reels MP4 hochkant klappen am sichersten).")
+        time.sleep(delay)
+    raise GraphError("Instagram hat die Datei nicht rechtzeitig verarbeitet. Bitte später „Jetzt posten“ versuchen.")
+
+
+def publish_instagram(cfg, kind, image, media, text):
     if not cfg["ig_user_id"]:
         raise GraphError("Mit der Facebook-Seite ist kein Instagram-Business-Konto verknüpft.")
-    if not image:
+    if kind in ("feed", "story") and not image:
         raise GraphError("Instagram braucht ein Bild.")
     if not cfg["public_url"].startswith("https://"):
         raise GraphError("Für Instagram fehlt die öffentliche https-Adresse des Hubs (Auto-Posting > Verbindung).")
-    name = media_bytes(image)[0]
-    if Path(name).suffix.lower() not in SHARE_EXT:
-        raise GraphError("Instagram kann dieses Bildformat nicht verarbeiten (bitte JPG oder PNG).")
-    url = f"{cfg['public_url']}/teilen/{share_sig(cfg['share_key'], name)}/{name}"
-    params = {"image_url": url, "media_type": "STORIES"} if story else {"image_url": url, "caption": text or ""}
-    box = graph("POST", f"{cfg['ig_user_id']}/media", params, cfg["fb_token"])
-    for _ in range(20):   # Instagram verarbeitet das Bild erst, dann kann veröffentlicht werden
-        st = graph("GET", box["id"], {"fields": "status_code"}, cfg["fb_token"]).get("status_code")
-        if st == "FINISHED":
-            break
-        if st in ("ERROR", "EXPIRED"):
-            raise GraphError("Instagram konnte das Bild nicht verarbeiten (JPG im Format 4:5 bzw. 9:16 für Storys klappt am sichersten).")
-        time.sleep(3)
-    return graph("POST", f"{cfg['ig_user_id']}/media_publish", {"creation_id": box["id"]}, cfg["fb_token"]).get("id", "")
+    ig, tok = cfg["ig_user_id"], cfg["fb_token"]
+
+    def url(path):
+        name = media_bytes(path)[0]
+        if Path(name).suffix.lower() not in SHARE_EXT:
+            raise GraphError("Instagram kann dieses Dateiformat nicht verarbeiten (Bilder JPG oder PNG, Videos MP4).")
+        return f"{cfg['public_url']}/teilen/{share_sig(cfg['share_key'], name)}/{name}"
+
+    if kind == "carousel":
+        children = []
+        for m in media:
+            child = graph("POST", f"{ig}/media", {"image_url": url(m), "is_carousel_item": "true"}, tok)
+            ig_wait(cfg, child["id"])
+            children.append(child["id"])
+        box = graph("POST", f"{ig}/media", {"media_type": "CAROUSEL", "children": ",".join(children), "caption": text or ""}, tok)
+        ig_wait(cfg, box["id"])
+    elif kind == "reel":
+        box = graph("POST", f"{ig}/media", {"media_type": "REELS", "video_url": url(media[0]), "caption": text or ""}, tok)
+        ig_wait(cfg, box["id"], tries=40, delay=10)   # Videos brauchen länger
+    else:
+        params = {"image_url": url(image), "media_type": "STORIES"} if kind == "story" else {"image_url": url(image), "caption": text or ""}
+        box = graph("POST", f"{ig}/media", params, tok)
+        ig_wait(cfg, box["id"])
+    return graph("POST", f"{ig}/media_publish", {"creation_id": box["id"]}, tok).get("id", "")
 
 
-def social_publish(cfg, image, text, targets, story):
+def social_publish(cfg, kind, image, media, text, targets):
     """Postet auf alle Ziele. Liefert (zustand, protokoll, facebook_id)."""
     t = (targets or "Facebook").lower()
     jobs = [("Facebook", publish_facebook)] if "facebook" in t else []
     jobs += [("Instagram", publish_instagram)] if "instagram" in t else []
     if not jobs:
         return "fehler", "Kein Ziel ausgewählt.", ""
+    try:
+        check_media(kind, image, media)
+    except GraphError as e:
+        return "fehler", f"{datetime.now():%d.%m.%Y %H:%M} {e}", ""
     ok, log, fb_id = 0, [], ""
     for label, fn in jobs:
         try:
-            rid = fn(cfg, image, text, story)
+            rid = fn(cfg, kind, image, media, text)
             ok += 1
             log.append(f"{label}: gepostet")
             if label == "Facebook":
@@ -804,12 +873,20 @@ def social_publish(cfg, image, text, targets, story):
     return state, f"{datetime.now():%d.%m.%Y %H:%M} " + " | ".join(log), fb_id
 
 
+POST_KIND = {"Feed": "feed", "Story": "story", "Karussell": "carousel", "Reel": "reel"}
+
+
+def post_media(post):
+    try:
+        items = json.loads(post["media"] or "[]")
+    except ValueError:
+        items = []
+    return [i["path"] for i in items if isinstance(i, dict) and i.get("path")]
+
+
 def publish_post(cfg, post):
     fmt = post["format"] or "Feed"
-    if fmt in ("Reel", "Karussell"):
-        state, log, fb_id = "fehler", f"{datetime.now():%d.%m.%Y %H:%M} Format {fmt} wird noch nicht automatisch gepostet.", ""
-    else:
-        state, log, fb_id = social_publish(cfg, post["image"], post["caption"], post["targets"], fmt == "Story")
+    state, log, fb_id = social_publish(cfg, POST_KIND.get(fmt, "feed"), post["image"], post_media(post), post["caption"], post["targets"])
     now = datetime.now().isoformat(timespec="seconds")
     with db() as conn:
         conn.execute("UPDATE posts SET publish_state=?, publish_log=?, published_at=?, updated_at=? WHERE id=?",
@@ -817,12 +894,13 @@ def publish_post(cfg, post):
         if state != "fehler":
             conn.execute("UPDATE posts SET status='Gepostet' WHERE id=?", (post["id"],))
             if fb_id and fmt != "Story":
-                conn.execute("UPDATE posts SET posted_url=? WHERE id=? AND IFNULL(posted_url,'')=''", (f"https://www.facebook.com/{fb_id}", post["id"]))
+                link = f"https://www.facebook.com/reel/{fb_id}" if fmt == "Reel" else f"https://www.facebook.com/{fb_id}"
+                conn.execute("UPDATE posts SET posted_url=? WHERE id=? AND IFNULL(posted_url,'')=''", (link, post["id"]))
     return state, log
 
 
 def publish_rule(cfg, rule):
-    state, log, _ = social_publish(cfg, rule["image"], "", rule["targets"], True)
+    state, log, _ = social_publish(cfg, "story", rule["image"], [], "", rule["targets"])
     with db() as conn:
         conn.execute("UPDATE story_rules SET last_result=? WHERE id=?", (log, rule["id"]))
     return state, log
@@ -835,15 +913,16 @@ def social_tick():
         return
     now = datetime.now()
     today, hm = now.strftime("%Y-%m-%d"), now.strftime("%H:%M")
-    claimed_posts, claimed_rules = [], []
+    claimed_posts, claimed_rules, missed_posts, missed_rules = [], [], [], []
     with db() as conn:
         due = conn.execute("SELECT * FROM posts WHERE auto_publish=1 AND IFNULL(publish_state,'')='' AND IFNULL(date,'')!='' "
                            "AND (date < ? OR (date = ? AND IFNULL(NULLIF(time,''),'00:00') <= ?))", (today, today, hm)).fetchall()
         for p in due:
             planned = datetime.strptime(f"{p['date']} {(p['time'] or '00:00')[:5]}", "%Y-%m-%d %H:%M")
             if (now - planned).total_seconds() > POST_LATE_HOURS * 3600:
-                conn.execute("UPDATE posts SET publish_state='verpasst', publish_log=? WHERE id=?",
-                             (f"{now:%d.%m.%Y %H:%M} Nicht gepostet: Zeitpunkt lag mehr als {POST_LATE_HOURS} Stunden zurück.", p["id"]))
+                log = f"{now:%d.%m.%Y %H:%M} Nicht gepostet: Zeitpunkt lag mehr als {POST_LATE_HOURS} Stunden zurück."
+                conn.execute("UPDATE posts SET publish_state='verpasst', publish_log=? WHERE id=?", (log, p["id"]))
+                missed_posts.append((p, log))
                 continue
             # zuerst als „läuft“ markieren, damit ein Post auch bei Fehlern nie doppelt rausgeht
             if conn.execute("UPDATE posts SET publish_state='läuft' WHERE id=? AND IFNULL(publish_state,'')=''", (p["id"],)).rowcount:
@@ -858,13 +937,25 @@ def social_tick():
             if not conn.execute("UPDATE story_rules SET last_run=? WHERE id=? AND IFNULL(last_run,'') != ?", (today, r["id"], today)).rowcount:
                 continue
             if late > STORY_LATE_MINUTES:
-                conn.execute("UPDATE story_rules SET last_result=? WHERE id=?", (f"{now:%d.%m.%Y %H:%M} Ausgelassen: der Hub lief zur geplanten Zeit nicht.", r["id"]))
+                log = f"{now:%d.%m.%Y %H:%M} Ausgelassen: der Hub lief zur geplanten Zeit nicht."
+                conn.execute("UPDATE story_rules SET last_result=? WHERE id=?", (log, r["id"]))
+                missed_rules.append((r, log))
                 continue
             claimed_rules.append(r)
+    for p, log in missed_posts:
+        notify_publish("Post", p["title"] or p["type"] or "Post", "verpasst", log)
+    for r, log in missed_rules:
+        notify_publish("Story", r["name"] or "Story", "verpasst", log)
     for p in claimed_posts:
-        publish_post(cfg, p)
+        state, log = publish_post(cfg, p)
+        with db() as conn:
+            audit(conn, "Auto-Posting", f"automatisch: {state}", "posts", p["id"], p["title"] or "", {"Ergebnis": log})
+        notify_publish("Post", p["title"] or p["type"] or "Post", state, log)
     for r in claimed_rules:
-        publish_rule(cfg, r)
+        state, log = publish_rule(cfg, r)
+        with db() as conn:
+            audit(conn, "Auto-Posting", f"automatisch: {state}", "story_rules", r["id"], r["name"] or "", {"Ergebnis": log})
+        notify_publish("Story", r["name"] or "Story", state, log)
 
 
 # ---- Statistik und Beiträge, die online sind (nur lesen, 15 Minuten zwischengespeichert) ----
@@ -974,6 +1065,173 @@ def social_online(cfg):
     return out
 
 
+# ---------------------------------------------------------------------------
+# E-Mail-Benachrichtigungen. Jeder wählt unter „Mein Profil“, was er bekommt (users.notify),
+# angeboten wird nur, wofür er Leserechte hat. SMTP-Zugang in secrets (Passwort nie über die API lesbar).
+# ---------------------------------------------------------------------------
+APPAREL_ANY = ("verein", "finanzen", "medien")
+NOTIFY_KINDS = {
+    "post_failed": ("Auto-Posting hat nicht geklappt", ("medien",)),
+    "post_done": ("Ein Post wurde automatisch veröffentlicht", ("medien",)),
+    "magazine_deadline": ("Stadionheft: Redaktionsschluss naht (7, 3, 1 Tag vorher und am Tag)", ("medien",)),
+    "apparel_orders": ("Teamkleidung: neue Bestellungen (höchstens einmal pro Stunde gesammelt)", APPAREL_ANY),
+    "apparel_deadline": ("Teamkleidung: Bestellschluss naht und Zusammenfassung danach", APPAREL_ANY),
+}
+SMTP_KEYS = ("smtp_host", "smtp_port", "smtp_security", "smtp_user", "smtp_from", "hub_url")
+NOTIFY_HOUR = 8   # Erinnerungen frühestens ab 8 Uhr
+NOTIFY_INTERVAL = int(ENV("TMH_NOTIFY_INTERVAL") or 300)   # Sekunden zwischen zwei Durchläufen (Variable nur für Tests)
+DIGEST_SECONDS = int(ENV("TMH_DIGEST_SECONDS") or 3600)    # neue Bestellungen höchstens so oft gesammelt melden
+
+
+def notify_allowed(perms, kind):
+    return any(perms.get(a, 0) >= 1 for a in NOTIFY_KINDS[kind][1])
+
+
+def smtp_config():
+    with db() as conn:
+        cfg = {k: secret_get(conn, k) for k in (*SMTP_KEYS, "smtp_password", "public_url")}
+    cfg["hub_url"] = (cfg["hub_url"] or cfg["public_url"] or "").rstrip("/")
+    return cfg
+
+
+def send_mail(cfg, to, subject, body):
+    """Schickt eine Klartext-Mail. Liefert None oder eine Fehlermeldung."""
+    import smtplib
+    import ssl
+    from email.message import EmailMessage
+    msg = EmailMessage()
+    msg["From"] = cfg["smtp_from"] or cfg["smtp_user"]
+    msg["To"] = to
+    msg["Subject"] = subject
+    msg.set_content(body + (f"\n\nZum Hub: {cfg['hub_url']}" if cfg["hub_url"] else "") +
+                    "\n\nWelche Nachrichten du bekommst, stellst du im Hub unter „Mein Profil“ ein.")
+    try:
+        port = int(cfg["smtp_port"] or (465 if cfg["smtp_security"] == "ssl" else 587))
+        ctx = ssl.create_default_context()
+        if cfg["smtp_security"] == "ssl":
+            s = smtplib.SMTP_SSL(cfg["smtp_host"], port, timeout=30, context=ctx)
+        else:
+            s = smtplib.SMTP(cfg["smtp_host"], port, timeout=30)
+            if cfg["smtp_security"] != "none":
+                s.starttls(context=ctx)
+        with s:
+            if cfg["smtp_user"]:
+                s.login(cfg["smtp_user"], cfg["smtp_password"])
+            s.send_message(msg)
+        return None
+    except Exception as e:  # noqa
+        return f"{type(e).__name__}: {e}"
+
+
+def notify(kind, subject, body, once_key=None):
+    """Mail an alle, die diese Nachricht abonniert haben und die Rechte dafür haben. once_key: nur einmal verschicken."""
+    cfg = smtp_config()
+    if not cfg["smtp_host"]:
+        return
+    with db() as conn:
+        if once_key:
+            if conn.execute("SELECT 1 FROM notify_sent WHERE key=?", (once_key,)).fetchone():
+                return
+            conn.execute("INSERT INTO notify_sent (key, time) VALUES (?, ?)", (once_key, datetime.now().isoformat(timespec="seconds")))
+        users = conn.execute("SELECT id, is_admin, email, notify FROM users WHERE active=1 AND IFNULL(email,'') != ''").fetchall()
+        to = []
+        for u in users:
+            try:
+                kinds = json.loads(u["notify"] or "[]")
+            except ValueError:
+                kinds = []
+            if kind in kinds and notify_allowed(effective_perms(conn, row_dict(u)), kind):
+                to.append(u["email"])
+    errors = [e for e in (send_mail(cfg, addr, f"Tigers Hub: {subject}", body) for addr in to) if e]   # einzeln, keine fremden Adressen sichtbar
+    with db() as conn:
+        secret_set(conn, "smtp_last_error", f"{datetime.now():%d.%m.%Y %H:%M} {errors[0]}" if errors else "")
+
+
+def notify_async(*args, **kw):
+    threading.Thread(target=lambda: notify(*args, **kw), daemon=True).start()
+
+
+def notify_publish(kind_label, title, state, log):
+    if state in ("fehler", "teilweise", "verpasst"):
+        notify_async("post_failed", f"{kind_label} „{title}“ hat nicht geklappt", f"{kind_label}: {title}\n{log}\n\nIm Hub unter Medien > Auto-Posting kannst du es erneut versuchen.")
+    elif state == "gepostet":
+        notify_async("post_done", f"{kind_label} „{title}“ ist online", f"{kind_label}: {title}\n{log}")
+
+
+MAG_SECTIONS_NEEDED = ("Vorwort", "Behind the Helmet", "Spielbericht", "Schiedsrichter", "Fan-Info", "Jugend", "Rückseite")
+
+
+def notify_tick():
+    """Erinnerungen (einmal pro Stichtag) und gesammelte neue Bestellungen."""
+    now = datetime.now()
+    today = now.date()
+    if now.hour >= NOTIFY_HOUR:
+        with db() as conn:
+            mags = conn.execute("SELECT * FROM magazines WHERE IFNULL(status,'') != 'Fertig' AND IFNULL(deadline,'') != ''").fetchall()
+            mag_open = {}
+            for m in mags:
+                have = {r["section"] for r in conn.execute("SELECT DISTINCT section FROM magazine_pages WHERE magazine_id=?", (m["id"],))}
+                miss = [s for s in MAG_SECTIONS_NEEDED if s not in have]
+                if not (m["sponsor_ids"] or "").strip("[] "):
+                    miss.insert(0, "Sponsoren")
+                if not m["game_id"]:
+                    miss.append("Heimspiel")
+                mag_open[m["id"]] = miss
+            apparel = conn.execute("SELECT * FROM apparel WHERE IFNULL(deadline,'') != ''").fetchall()
+            counts = {r["apparel_id"]: (r["n"], r["pcs"]) for r in conn.execute(
+                "SELECT apparel_id, COUNT(*) AS n, SUM(IFNULL(quantity,1)) AS pcs FROM apparel_orders GROUP BY apparel_id")}
+        for m in mags:
+            d = (datetime.strptime(m["deadline"], "%Y-%m-%d").date() - today).days
+            label = " ".join(x for x in (m["title"], m["number"], m["season"]) if x)
+            if d in (7, 3, 1, 0) and mag_open[m["id"]]:
+                when = "heute" if d == 0 else "morgen" if d == 1 else f"in {d} Tagen"
+                notify("magazine_deadline", f"Stadionheft {label}: Redaktionsschluss {when}",
+                       f"Redaktionsschluss für „{label}“ ist {when} ({m['deadline'][8:]}.{m['deadline'][5:7]}.).\nNoch offen: {', '.join(mag_open[m['id']])}",
+                       once_key=f"mag:{m['id']}:{m['deadline']}:{d}")
+        for a in apparel:
+            d = (datetime.strptime(a["deadline"], "%Y-%m-%d").date() - today).days
+            n, pcs = counts.get(a["id"], (0, 0))
+            if d in (3, 1) and a["active"]:
+                notify("apparel_deadline", f"{a['name']}: Bestellschluss in {d} Tag{'en' if d > 1 else ''}",
+                       f"Bestellschluss für „{a['name']}“ ist am {a['deadline'][8:]}.{a['deadline'][5:7]}.\nBisher: {n} Bestellungen, {pcs or 0} Stück.",
+                       once_key=f"app:{a['id']}:{a['deadline']}:{d}")
+            if d == -1:
+                notify("apparel_deadline", f"{a['name']}: Bestellschluss vorbei",
+                       f"Für „{a['name']}“ ist der Bestellschluss vorbei.\nErgebnis: {n} Bestellungen, {pcs or 0} Stück.\n"
+                       "Die Zusammenfassung für den Lieferanten steht im Hub unter Teamkleidung.",
+                       once_key=f"app:{a['id']}:{a['deadline']}:done")
+    # Neue Bestellungen über den Link: höchstens einmal pro Stunde gesammelt
+    with db() as conn:
+        if not secret_get(conn, "notify_last_order"):   # erster Lauf: nur ab jetzt melden, nicht alle alten Bestellungen
+            secret_set(conn, "notify_last_order", str(conn.execute("SELECT IFNULL(MAX(id), 0) FROM apparel_orders").fetchone()[0]))
+            return
+        last_id = int(secret_get(conn, "notify_last_order") or 0)
+        last_time = float(secret_get(conn, "notify_last_digest") or 0)
+        if time.time() - last_time < DIGEST_SECONDS:
+            return
+        rows = conn.execute("SELECT o.id, o.quantity, a.name FROM apparel_orders o JOIN apparel a ON a.id = o.apparel_id "
+                            "WHERE o.id > ? AND o.source='Link' ORDER BY o.id", (last_id,)).fetchall()
+        if not rows:
+            return
+        secret_set(conn, "notify_last_order", str(rows[-1]["id"]))
+        secret_set(conn, "notify_last_digest", str(time.time()))
+    per = {}
+    for r in rows:
+        n, pcs = per.get(r["name"], (0, 0))
+        per[r["name"]] = (n + 1, pcs + (r["quantity"] or 1))
+    notify("apparel_orders", f"{len(rows)} neue Bestellung{'en' if len(rows) > 1 else ''}",
+           "Neu über den Bestell-Link:\n" + "\n".join(f"{k}: {n} Bestellung{'en' if n > 1 else ''}, {p} Stück" for k, (n, p) in per.items()))
+
+
+def notify_loop():
+    while True:
+        try:
+            notify_tick()
+        except Exception as e:  # noqa
+            print("Benachrichtigungen fehlgeschlagen:", e)
+        threading.Event().wait(NOTIFY_INTERVAL)
+
+
 def social_loop():
     while True:
         try:
@@ -1021,7 +1279,38 @@ def backup_loop():
         threading.Event().wait(3600)
 
 
-AUTH_TABLES = ("users", "sessions", "groups", "group_perms", "user_groups", "user_perms", "secrets")
+AUTH_TABLES = ("users", "sessions", "groups", "group_perms", "user_groups", "user_perms", "secrets", "audit_log")
+
+
+# ---------------------------------------------------------------------------
+# Änderungsprotokoll
+# ---------------------------------------------------------------------------
+AUDIT_SKIP = {"updated_at", "created_at", "public_token"}
+AUDIT_KEEP_DAYS = 400
+LABEL_KEYS = ("title", "name", "description", "holder", "section", "author", "date")
+
+
+def audit_short(v):
+    s = "" if v is None else str(v)
+    return s if len(s) <= 120 else s[:117] + "..."
+
+
+def audit_label(row):
+    d = row_dict(row) if row is not None and not isinstance(row, dict) else (row or {})
+    if d.get("first_name") or d.get("last_name"):
+        return f"{d.get('first_name') or ''} {d.get('last_name') or ''}".strip()
+    return next((audit_short(d[k]) for k in LABEL_KEYS if d.get(k)), "")
+
+
+def audit(conn, user, action, table="", rid=None, label="", details=None):
+    """user: angemeldeter Benutzer (dict) oder ein Name wie „Bestell-Link“ für Aktionen ohne Login."""
+    if isinstance(user, dict):
+        uid, name = user.get("id"), user.get("display_name") or user.get("username") or "?"
+    else:
+        uid, name = None, user or "System"
+    conn.execute("INSERT INTO audit_log (time, user_id, user_name, action, table_name, record_id, label, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                 (datetime.now().isoformat(timespec="seconds"), uid, name, action, table, rid, (label or "")[:120],
+                  json.dumps(details, ensure_ascii=False)[:6000] if details else ""))
 
 
 def restore_backup(raw: bytes):
@@ -1553,8 +1842,11 @@ class Handler(BaseHTTPRequestHandler):
         # Öffentlich erreichbar
         if method == "GET" and head == "healthz":
             return self.send_json({"ok": True, "version": VERSION})
-        if method == "GET" and p in (["static", "style.css"], ["static", "logo.png"], ["static", "icon.png"]):
+        if method == "GET" and p in (["static", "style.css"], ["static", "logo.png"], ["static", "icon.png"],
+                                     ["static", "icon-192.png"], ["static", "icon-512.png"]):
             return self.serve_under(STATIC, p[1:])
+        if method == "GET" and p in (["manifest.webmanifest"], ["sw.js"]):   # App auf dem Startbildschirm
+            return self.send_file(STATIC / p[0])
         if head == "login" and method == "GET":
             if self.current_user():
                 return self.redirect("/")
@@ -1745,9 +2037,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"error": err}, 400)
             now = datetime.now().isoformat(timespec="seconds")
             with db() as conn:
-                conn.execute("INSERT INTO apparel_orders (apparel_id, data, quantity, paid, source, created, created_at, updated_at) "
-                             "VALUES (?, ?, ?, 0, 'Link', ?, ?, ?)", (a["id"], json.dumps(vals, ensure_ascii=False), qty, now, now, now))
-            return self.send_json({"ok": True})
+                cur = conn.execute("INSERT INTO apparel_orders (apparel_id, data, quantity, paid, source, created, created_at, updated_at) "
+                                   "VALUES (?, ?, ?, 0, 'Link', ?, ?, ?)", (a["id"], json.dumps(vals, ensure_ascii=False), qty, now, now, now))
+                audit(conn, "Bestell-Link", "neu", "apparel_orders", cur.lastrowid, a["name"], {**vals, "Menge": qty})
+            return self.send_json({"ok": True, "number": cur.lastrowid})
         return self.send_json({"error": "Methode nicht erlaubt"}, 405)
 
     # -- API --------------------------------------------------------------
@@ -1764,6 +2057,7 @@ class Handler(BaseHTTPRequestHandler):
             if not p:
                 return self.send_json({"app": APP_NAME, "version": VERSION})
             name = p[0]
+            self.user = user   # für das Änderungsprotokoll
             perms = user["perms"]
             admin = user["is_admin"]
             can = lambda area, lvl=1: perms.get(area, 0) >= lvl
@@ -1802,7 +2096,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not admin:
                     return self.deny("Nur für Admins.")
                 try:
-                    return self.send_json(restore_backup(self.read_body()))
+                    res = restore_backup(self.read_body())
+                    with db() as conn:
+                        audit(conn, user, "Backup eingespielt", "backup", None, f"{res.get('media', 0)} neue Bilder")
+                    return self.send_json(res)
                 except ValueError as e:
                     return self.send_json({"error": str(e)}, 400)
             if name in ("backup", "export", "backups"):
@@ -1812,6 +2109,8 @@ class Handler(BaseHTTPRequestHandler):
                     files = sorted(BACKUPS.glob("*.db"), reverse=True)
                     return self.send_json([{"name": f.name, "size": f.stat().st_size} for f in files])
                 if name == "backup" and method == "GET":
+                    with db() as conn:
+                        audit(conn, user, "Backup heruntergeladen", "backup")
                     return self.api_backup()
                 if name == "export" and method == "GET":
                     return self.api_export()
@@ -1833,12 +2132,40 @@ class Handler(BaseHTTPRequestHandler):
 
             if name == "social":
                 return self.api_social(method, p[1:], user, can)
+            if name == "notify":
+                return self.api_notify(method, p[1:], user)
+
+            if name == "apparel" and method == "POST" and len(p) == 3 and p[2] == "book":
+                # Sammelbuchung: alle bezahlten, noch nicht gebuchten Bestellungen als eine Einnahme
+                if not can("finanzen", 2):
+                    return self.deny("Für Buchungen braucht es Bearbeiten-Rechte bei Finanzen.")
+                with db() as conn:
+                    a = conn.execute("SELECT * FROM apparel WHERE id=?", (int(p[1]),)).fetchone()
+                    if not a:
+                        return self.send_json({"error": "Artikel nicht gefunden."}, 404)
+                    if not a["price"]:
+                        return self.send_json({"error": "Für den Artikel ist kein Preis eingetragen."}, 400)
+                    rows = conn.execute("SELECT id, quantity FROM apparel_orders WHERE apparel_id=? AND paid=1 AND booked_tx IS NULL", (a["id"],)).fetchall()
+                    if not rows:
+                        return self.send_json({"error": "Es gibt keine neuen bezahlten Bestellungen."}, 400)
+                    pcs = sum(r["quantity"] or 1 for r in rows)
+                    now = datetime.now().isoformat(timespec="seconds")
+                    vals = {"date": now[:10], "kind": "Einnahme", "category": "Teamkleidung",
+                            "description": f"{a['name']}: {len(rows)} Bestellung{'en' if len(rows) > 1 else ''}, {pcs} Stück",
+                            "amount": round(a["price"] * pcs, 2), "status": "Erledigt", "paid_by": "Besteller",
+                            "notes": "Bestellnummern: " + ", ".join(f"#{r['id']}" for r in rows), "created_at": now, "updated_at": now}
+                    cur = conn.execute(f"INSERT INTO transactions ({', '.join(vals)}) VALUES ({', '.join('?' for _ in vals)})", list(vals.values()))
+                    conn.execute(f"UPDATE apparel_orders SET booked_tx=? WHERE id IN ({', '.join('?' for _ in rows)})", [cur.lastrowid, *[r["id"] for r in rows]])
+                    audit(conn, user, "neu", "transactions", cur.lastrowid, vals["description"], {"Betrag": vals["amount"], "Bestellungen": vals["notes"]})
+                return self.send_json({"ok": True, "transaction_id": cur.lastrowid, "amount": vals["amount"], "orders": len(rows)})
 
             if name == "apparel" and method == "POST" and len(p) == 3 and p[2] == "new-link":
                 if max(perms.get(a, 0) for a in TABLE_AREAS_ANY["apparel"]) < 2:
                     return self.deny()
                 with db() as conn:
                     conn.execute("UPDATE apparel SET public_token=? WHERE id=?", (secrets.token_urlsafe(18), int(p[1])))
+                    a = conn.execute("SELECT name FROM apparel WHERE id=?", (int(p[1]),)).fetchone()
+                    audit(conn, user, "neuer Bestell-Link", "apparel", int(p[1]), a["name"] if a else "")
                 return self.send_json({"ok": True})
 
             if name in TABLES:
@@ -1860,6 +2187,40 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa
             print("Fehler:", repr(e))
             return self.send_json({"error": str(e)}, 500)
+
+    # -- E-Mail-Versand (nur Admins) ---------------------------------------
+    def api_notify(self, method, p, user):
+        if not user["is_admin"]:
+            return self.deny("Nur Admins können den E-Mail-Versand einrichten.")
+        sub = p[0] if p else ""
+        if method == "GET" and not sub:
+            with db() as conn:
+                cfg = {k: secret_get(conn, k) for k in SMTP_KEYS}
+                cfg["password_set"] = bool(secret_get(conn, "smtp_password"))
+                cfg["last_error"] = secret_get(conn, "smtp_last_error")
+            return self.send_json(cfg)
+        if method == "PUT" and not sub:
+            data = self.read_json()
+            with db() as conn:
+                for k in SMTP_KEYS:
+                    if k in data:
+                        secret_set(conn, k, str(data[k] or "").strip())
+                if (data.get("smtp_password") or "").strip():
+                    secret_set(conn, "smtp_password", data["smtp_password"].strip())
+                audit(conn, user, "geändert", "settings", None, "E-Mail-Versand", {k: audit_short(data.get(k)) for k in SMTP_KEYS if k in data})
+            return self.send_json({"ok": True})
+        if method == "POST" and sub == "test":
+            to = (self.read_json().get("to") or "").strip()
+            if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", to):
+                return self.send_json({"error": "Bitte eine gültige E-Mail-Adresse angeben."}, 400)
+            cfg = smtp_config()
+            if not cfg["smtp_host"]:
+                return self.send_json({"error": "Es ist noch kein Mailserver eingetragen."}, 400)
+            err = send_mail(cfg, to, "Tigers Hub: Test-Nachricht", "Der E-Mail-Versand des Emden Tigers Hub funktioniert.")
+            if err:
+                return self.send_json({"error": f"Versand fehlgeschlagen: {err}"}, 400)
+            return self.send_json({"ok": True})
+        return self.send_json({"error": "Unbekannter Pfad"}, 404)
 
     # -- Auto-Posting (Facebook/Instagram) ---------------------------------
     def api_social(self, method, p, user, can):
@@ -1890,6 +2251,7 @@ class Handler(BaseHTTPRequestHandler):
                 with db() as conn:
                     for k in ("fb_token", "fb_page_id", "fb_page_name", "ig_user_id", "ig_username"):
                         secret_set(conn, k, "")
+                    audit(conn, user, "Verbindung getrennt", "social", None, "Facebook/Instagram")
                 return self.send_json({"ok": True})
             if method == "PUT":
                 data = self.read_json()
@@ -1897,7 +2259,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not token:
                     return self.send_json({"error": "Bitte das Seiten-Token eintragen."}, 400)
                 try:
-                    return self.send_json(social_connect(token, data.get("public_url")))
+                    res = social_connect(token, data.get("public_url"))
+                    with db() as conn:
+                        audit(conn, user, "verbunden", "social", None, "Facebook/Instagram", res)
+                    return self.send_json(res)
                 except GraphError as e:
                     return self.send_json({"error": f"Verbindung fehlgeschlagen: {e}"}, 400)
                 except (KeyError, TypeError):
@@ -1925,6 +2290,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json({"error": "Nichts ausgewählt."}, 400)
             with SOCIAL_LOCK:
                 state, log = publish_post(cfg, row) if data.get("post_id") else publish_rule(cfg, row)
+            with db() as conn:
+                audit(conn, user, "jetzt gepostet", "posts" if data.get("post_id") else "story_rules", row["id"],
+                      row["title"] if data.get("post_id") else row["name"], {"Ergebnis": log})
             return self.send_json({"state": state, "log": log})
         if sub == "reset" and method == "POST":
             # Post nach Fehler oder verpasstem Termin wieder einplanen
@@ -1945,17 +2313,26 @@ class Handler(BaseHTTPRequestHandler):
                 data = self.read_json()
                 if "display_name" in data:
                     conn.execute("UPDATE users SET display_name=? WHERE id=?", ((data["display_name"] or "").strip()[:80] or user["username"], user["id"]))
+                if "notify" in data:
+                    email = (data.get("notify_email") or "").strip()
+                    if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+                        return self.send_json({"error": "Bitte eine gültige E-Mail-Adresse angeben."}, 400)
+                    kinds = [k for k in (data["notify"] or []) if k in NOTIFY_KINDS and notify_allowed(user["perms"], k)]
+                    conn.execute("UPDATE users SET email=?, notify=? WHERE id=?", (email, json.dumps(kinds), user["id"]))
                 if user["member_id"]:
                     vals = clean_values("members", {k: v for k, v in data.items() if k in self.PROFILE_FIELDS})
                     if vals:
                         vals["updated_at"] = datetime.now().isoformat(timespec="seconds")
                         conn.execute(f"UPDATE members SET {', '.join(f'{k}=?' for k in vals)} WHERE id=?", [*vals.values(), user["member_id"]])
-            u = conn.execute("SELECT username, display_name, email FROM users WHERE id=?", (user["id"],)).fetchone()
+            u = conn.execute("SELECT username, display_name, email, notify FROM users WHERE id=?", (user["id"],)).fetchone()
             m = conn.execute("SELECT * FROM members WHERE id=?", (user["member_id"],)).fetchone() if user["member_id"] else None
             pl = None
             if m and m["player_id"]:
                 pl = conn.execute("SELECT number, position, unit, role, kind FROM players WHERE id=?", (m["player_id"],)).fetchone()
-            return self.send_json({"account": row_dict(u), "member": row_dict(m) if m else None, "player": row_dict(pl) if pl else None})
+            kinds = [{"key": k, "label": v[0]} for k, v in NOTIFY_KINDS.items() if notify_allowed(user["perms"], k)]
+            mail_ready = bool(secret_get(conn, "smtp_host"))
+            return self.send_json({"account": row_dict(u), "member": row_dict(m) if m else None, "player": row_dict(pl) if pl else None,
+                                   "notify_kinds": kinds, "mail_ready": mail_ready})
 
     # -- Konten, Gruppen, Rechte ------------------------------------------
     def user_payload(self, conn, uid):
@@ -1991,6 +2368,24 @@ class Handler(BaseHTTPRequestHandler):
         what = p[0] if p else ""
         rid = int(p[1]) if len(p) > 1 and p[1].isdigit() else None
         sub = p[2] if len(p) > 2 else ""
+
+        if what == "log" and method == "GET":
+            q = parse_qs(urlparse(self.path).query)
+            limit = min(1000, max(50, int((q.get("limit") or ["300"])[0] or 300)))
+            with db() as conn:
+                rows = conn.execute("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+            return self.send_json([row_dict(r) for r in rows])
+        if method != "GET" and what in ("users", "groups"):
+            name = None
+            with db() as conn:
+                if rid and what == "users":
+                    u = conn.execute("SELECT username, display_name FROM users WHERE id=?", (rid,)).fetchone()
+                    name = u and (u["display_name"] or u["username"])
+                elif rid:
+                    g = conn.execute("SELECT name FROM groups WHERE id=?", (rid,)).fetchone()
+                    name = g and g["name"]
+                act = {"POST": "neu", "PUT": "geändert", "DELETE": "gelöscht"}.get(method, method)
+                audit(conn, me, f"{act}{' (' + sub + ')' if sub else ''}", what, rid, name or "")
 
         if what == "users":
             if method == "GET":
@@ -2119,6 +2514,8 @@ class Handler(BaseHTTPRequestHandler):
                 qs = ", ".join("?" for _ in vals)
                 cur = conn.execute(f'INSERT INTO "{table}" ({cols}) VALUES ({qs})', list(vals.values()))
                 r = conn.execute(f'SELECT * FROM "{table}" WHERE id=?', (cur.lastrowid,)).fetchone()
+                audit(conn, getattr(self, "user", None), "neu", table, cur.lastrowid, audit_label(r),
+                      {k: audit_short(v) for k, v in vals.items() if k not in AUDIT_SKIP and v not in (None, "")})
                 return self.send_json(out(r), 201)
 
             if method == "PUT" and rid is not None:
@@ -2127,12 +2524,24 @@ class Handler(BaseHTTPRequestHandler):
                     vals.pop(f, None)
                 vals.pop("public_token", None)   # neuer Link nur über /api/apparel/<id>/new-link
                 vals["updated_at"] = now
+                old = conn.execute(f'SELECT * FROM "{table}" WHERE id=?', (rid,)).fetchone()
+                if table == "apparel_orders" and old and old["booked_tx"] and "paid" in vals and int(vals["paid"] or 0) != int(old["paid"] or 0):
+                    return self.send_json({"error": "Diese Bestellung ist schon in den Finanzen gebucht, „bezahlt“ lässt sich nicht mehr ändern."}, 400)
                 sets = ", ".join(f'"{k}"=?' for k in vals)
                 conn.execute(f'UPDATE "{table}" SET {sets} WHERE id=?', list(vals.values()) + [rid])
                 r = conn.execute(f'SELECT * FROM "{table}" WHERE id=?', (rid,)).fetchone()
+                if old:
+                    changes = {k: [audit_short(old[k]), audit_short(v)] for k, v in vals.items()
+                               if k not in AUDIT_SKIP and str(old[k] if old[k] is not None else "") != str(v if v is not None else "")}
+                    if changes:
+                        audit(conn, getattr(self, "user", None), "geändert", table, rid, audit_label(r), changes)
                 return self.send_json(out(r) if r else None)
 
             if method == "DELETE" and rid is not None:
+                old = conn.execute(f'SELECT * FROM "{table}" WHERE id=?', (rid,)).fetchone()
+                if old:
+                    audit(conn, getattr(self, "user", None), "gelöscht", table, rid, audit_label(old),
+                          {k: audit_short(v) for k, v in row_dict(old).items() if k not in AUDIT_SKIP and v not in (None, "")})
                 conn.execute(f'DELETE FROM "{table}" WHERE id=?', (rid,))
                 if table == "games":
                     conn.execute("DELETE FROM assignments WHERE game_id=?", (rid,))
@@ -2152,6 +2561,11 @@ class Handler(BaseHTTPRequestHandler):
         with db() as conn:
             if method == "PUT":
                 data = self.read_json()
+                old = {r["key"]: r["value"] for r in conn.execute("SELECT key, value FROM settings")}
+                changes = {k: [audit_short(old.get(k)), audit_short(v)] for k, v in data.items()
+                           if k not in ("sheet_last_sync", "sheet_last_error", "sheet_columns") and str(old.get(k) or "") != str(v or "")}
+                if changes:
+                    audit(conn, getattr(self, "user", None), "geändert", "settings", None, "Einstellungen", changes)
                 for k, v in data.items():
                     if k in ("sheet_last_sync", "sheet_last_error", "sheet_columns"):
                         continue
@@ -2195,7 +2609,7 @@ class Handler(BaseHTTPRequestHandler):
             # Zugangsdaten gehören nicht in ein heruntergeladenes Backup
             c = sqlite3.connect(tmp)
             try:
-                for t in ("sessions", "users", "user_groups", "user_perms", "secrets"):
+                for t in ("sessions", "users", "user_groups", "user_perms", "secrets", "audit_log"):
                     c.execute(f"DELETE FROM {t}")
                 c.commit()
                 c.execute("VACUUM")
@@ -2332,6 +2746,8 @@ def cleanup_loop():
         try:
             with db() as conn:
                 conn.execute("DELETE FROM sessions WHERE expires < ?", (time.time(),))
+                conn.execute("DELETE FROM audit_log WHERE time < ?",
+                             ((datetime.now() - timedelta(days=AUDIT_KEEP_DAYS)).isoformat(timespec="seconds"),))
         except Exception:  # noqa
             pass
         threading.Event().wait(6 * 3600)
@@ -2406,7 +2822,7 @@ def main():
     if not SERVER_MODE:
         print("  Zum Beenden dieses Fenster schließen (oder Strg+C).")
     print("=" * 56, flush=True)
-    for fn in (sync_loop, backup_loop, cleanup_loop, social_loop):
+    for fn in (sync_loop, backup_loop, cleanup_loop, social_loop, notify_loop):
         threading.Thread(target=fn, daemon=True).start()
     if not SERVER_MODE and "--no-browser" not in sys.argv:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
