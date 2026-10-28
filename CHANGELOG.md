@@ -1,5 +1,15 @@
 # Änderungen
 
+## 3.3 (28.10.2026)
+- Stadionheft umgebaut: statt Seitenplan jetzt alle Infos für ein Heft zum Rauskopieren nach Canva
+  - Sponsoren für das Heft auswählen, mit Logo und Anzeigen-Dateien
+  - Trainerteam mit Foto und Kader nach Unit und Position aus „Kader & Staff“
+  - Vorwort mit Autor, Funktion und Foto
+  - Behind the Helmet: Fragebogen pro Spieler, Foto aus Kader & Staff, Hinweis bei fehlender Foto-Einwilligung
+  - Gegner automatisch aus dem Heimspiel, Spielberichte mit Ergebnis aus dem Spielplan
+  - Schiedsrichter, Fan-Info, Jugend und Rückseite; Sponsoren, Fan-Info, Jugend und Rückseite aus dem letzten Heft übernehmen
+  - „Text kopieren“ pro Bereich und „Alles kopieren“ für das ganze Heft, Übersicht welche Bereiche noch fehlen
+
 ## 3.2 (28.10.2026)
 - Neu im Bereich Medien: Stadionheft planen
   - Ausgaben mit Heimspiel, Redaktionsschluss, Druckabgabe, Canva-Link und fertigem PDF

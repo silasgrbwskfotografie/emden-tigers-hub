@@ -32,7 +32,7 @@ async function load(table, force = false) {
 function invalidate(...tables) { tables.forEach(t => delete App.cache[t]); }
 async function loadAll(...tables) { return Promise.all(tables.map(t => load(t))); }
 
-const APP_VERSION = '3.2';
+const APP_VERSION = '3.3';
 async function checkVersion() {
   try {
     const info = await api('');
@@ -395,6 +395,7 @@ async function editRecord(table, fields, record = {}, opts = {}) {
     if (ro) return;
     $('#recSave').onclick = async () => {
       const vals = { ...(opts.fixed || {}), ...readForm(box, fields) };
+      if (opts.beforeSave) opts.beforeSave(vals);
       try {
         const saved = isNew ? await api(table, 'POST', vals) : await api(`${table}/${record.id}`, 'PUT', vals);
         invalidate(table); closeModal(); toast('Gespeichert'); resolve(saved);

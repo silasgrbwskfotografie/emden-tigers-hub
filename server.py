@@ -46,7 +46,7 @@ from urllib.parse import urlparse, unquote, parse_qs
 import urllib.request
 import urllib.error
 
-VERSION = "3.2"
+VERSION = "3.3"
 APP_NAME = "Emden Tigers Hub"
 ENV = os.environ.get
 HOST = ENV("TMH_HOST", "127.0.0.1")
@@ -246,8 +246,9 @@ TABLES = {
         "canva_url": "TEXT",
         "files": "TEXT",                           # JSON-Liste wie bei sponsors.files
         "notes": "TEXT",
+        "sponsor_ids": "TEXT",                     # JSON-Liste der Sponsoren in diesem Heft
     },
-    "magazine_pages": {                         # Seitenplan eines Stadionhefts
+    "magazine_pages": {                         # Beiträge eines Stadionhefts (Vorwort, Behind the Helmet, ...)
         "magazine_id": "INTEGER",
         "page": "INTEGER",
         "section": "TEXT",                         # Cover / Vorwort / Anzeige / Kader / Spielbericht ...
@@ -261,6 +262,10 @@ TABLES = {
         "text": "TEXT",
         "files": "TEXT",
         "notes": "TEXT",
+        "author": "TEXT",                          # Vorwort: wer schreibt
+        "role": "TEXT",                            # Vorwort: Funktion
+        "image": "TEXT",
+        "answers": "TEXT",                         # Behind the Helmet: JSON {Frage: Antwort}
     },
 }
 

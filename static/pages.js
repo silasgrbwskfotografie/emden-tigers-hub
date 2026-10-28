@@ -154,8 +154,8 @@ App.pages.dashboard = async (view) => {
     if (done < Number(sp.posts_agreed)) notes.push(`${esc(sp.name)}: ${done} von ${sp.posts_agreed} vereinbarten Posts erledigt. <button class="pp btn sm" onclick="planPost({type:'Sponsor',sponsor_id:${sp.id}})">Planen</button>`);
   });
   if (medien) App.cache.magazines.filter(m => m.status !== 'Fertig' && m.deadline).forEach(m => {
-    const d = daysUntil(m.deadline), pages = magPages(m.id), open = pages.filter(p => !magDone(p)).length;
-    if (d <= 14 && open) notes.push(`Stadionheft „${esc(magLabel(m))}“: ${d < 0 ? 'Redaktionsschluss war am' : 'Redaktionsschluss am'} ${fmtDate(m.deadline)}, noch ${open} von ${pages.length} Seiten offen. <a class="btn sm" href="#/magazine/${m.id}">Ansehen</a>`);
+    const d = daysUntil(m.deadline), open = magChecklist(m).filter(c => !c[1]).map(c => c[0]);
+    if (d <= 14 && open.length) notes.push(`Stadionheft „${esc(magLabel(m))}“: ${d < 0 ? 'Redaktionsschluss war am' : 'Redaktionsschluss am'} ${fmtDate(m.deadline)}, noch offen: ${esc(open.join(', '))}. <a class="btn sm" href="#/magazine/${m.id}">Ansehen</a>`);
   });
   if (dash.finance?.open) notes.push(`${dash.finance.open} offene Buchung(en) in den Finanzen. <a class="btn sm" href="#/finance">Ansehen</a>`);
   if (me.member_id === null && !me.is_admin) notes.push('Dein Zugang ist noch keinem Mitgliedsprofil zugeordnet. Das macht der Admin unter Konten.');
@@ -478,175 +478,158 @@ App.pages.team = async (view) => {
 };
 
 /* ====================================================================== */
-/* Stadionheft: Ausgaben planen, Seitenplan, Texte für Canva (Gestaltung bleibt in Canva) */
+/* Stadionheft: alle Infos für ein Heft an einem Ort, zum Rauskopieren nach Canva (Gestaltung bleibt in Canva) */
 const MAG_STATUS = ['Planung', 'In Arbeit', 'Im Druck', 'Fertig'];
-const MAG_PAGE_STATUS = ['Offen', 'Text da', 'Bilder da', 'Fertig in Canva'];
-const MAG_SECTIONS = ['Cover', 'Vorwort', 'Anzeige', 'Verabschiedung', 'Coaches', 'Kader', 'Interview', 'Fan-Info', 'Schiedsrichter', 'Gegner', 'Historie', 'Spielbericht', 'Jugend', 'Rückseite', 'Sonstiges'];
-// Aufbau des Stadionhefts 2026 (4 von 4): Inhaltsseiten und Anzeigen im Wechsel
-const MAG_TEMPLATE = [
-  ['Cover', 'Titelseite'], ['Anzeige', ''], ['Vorwort', 'Vorwort'], ['Anzeige', ''],
-  ['Verabschiedung', 'Verabschiedung / Ehrung'], ['Anzeige', ''], ['Verabschiedung', 'Verabschiedung / Ehrung'], ['Anzeige', ''],
-  ['Verabschiedung', 'Verabschiedung / Ehrung'], ['Anzeige', ''], ['Verabschiedung', 'Verabschiedung / Ehrung'], ['Anzeige', ''],
-  ['Verabschiedung', 'Verabschiedung / Ehrung'], ['Anzeige', ''], ['Coaches', 'Coaches'], ['Kader', 'Kader Offense'],
-  ['Kader', 'Kader Defense'], ['Anzeige', ''], ['Interview', 'Spielerinterview'], ['Anzeige', ''],
-  ['Interview', 'Spielerinterview'], ['Fan-Info', 'Offense on Field: Ruhe bitte'], ['Fan-Info', 'Defense on Field: Get loud!'], ['Anzeige', ''],
-  ['Schiedsrichter', 'Schiedsrichter-Crew'], ['Gegner', 'Gegnervorstellung'], ['Historie', 'Aus der Vereinsgeschichte'], ['Anzeige', ''],
-  ['Spielbericht', 'Spielbericht'], ['Anzeige', ''], ['Spielbericht', 'Spielbericht'], ['Anzeige', ''],
-  ['Spielbericht', 'Spielbericht'], ['Anzeige', ''], ['Jugend', 'Jugend'], ['Rückseite', 'Join the Tigers'],
-];
-// Diese Rubriken bleiben meist gleich: Text und Dateien werden beim Kopieren aus dem letzten Heft übernommen
-const MAG_REUSE = ['Fan-Info', 'Rückseite', 'Jugend', 'Anzeige'];
-const MAG_QUESTIONS = ['Was waren deine bisherigen Vereine im Football?', 'Welche Positionen würdest du sonst spielen?', 'Wie bist du zum Football gekommen?',
+// Fragebogen „Behind the Helmet“ wie im Heft 2026
+const BTH_QUESTIONS = ['Was waren deine bisherigen Vereine im Football?', 'Welche Positionen würdest du sonst spielen?', 'Wie bist du zum Football gekommen?',
   'Was fasziniert dich am Football?', 'Lieblingsmannschaft in der NFL?', 'Lieblingsspieler?', 'Was würdest du jedem raten, der mit Football anfangen möchte?'];
 const MAG_REFS = ['Referee', 'Umpire', 'Linesman', 'Line Judge', 'Back Judge', 'Field Judge', 'Side Judge'];
 const POS_PLURAL = { QB: 'Quarterbacks', RB: 'Runningbacks', FB: 'Fullbacks', WR: 'Wide Receiver', TE: 'Tight Ends', OL: 'Offensive Line', DL: 'Defensive Line', DE: 'Defensive Ends',
   LB: 'Linebacker', CB: 'Cornerbacks', S: 'Safeties', K: 'Kicker', P: 'Punter', LS: 'Long Snapper', 'KR/PR': 'Returner', Athlete: 'Athletes' };
+// Beiträge, die im Heft angelegt werden (Tabelle magazine_pages, Spalte section). reuse: wird aus dem letzten Heft übernommen
+const MAG_ITEMS = {
+  'Vorwort': { title: 'Vorwort', add: 'Vorwort anlegen', single: true },
+  'Behind the Helmet': { title: 'Behind the Helmet', add: 'Spieler hinzufügen' },
+  'Gegner': { title: 'Gegner', add: 'Eigenen Text zum Gegner', single: true },
+  'Spielbericht': { title: 'Spielberichte', add: 'Spielbericht hinzufügen' },
+  'Schiedsrichter': { title: 'Schiedsrichter', add: 'Crew eintragen', single: true },
+  'Fan-Info': { title: 'Fan-Info', add: 'Fan-Info hinzufügen', reuse: true },
+  'Jugend': { title: 'Jugend', add: 'Jugendseite anlegen', reuse: true },
+  'Rückseite': { title: 'Rückseite: Join the Tigers', add: 'Rückseite anlegen', single: true, reuse: true },
+};
 
 const magLabel = m => [m.title || 'Stadionheft', m.number, m.season].filter(Boolean).join(' ');
-const magPages = id => App.cache.magazine_pages.filter(p => p.magazine_id == id)
-  .sort((a, b) => (Number(a.page) || 999) - (Number(b.page) || 999) || a.id - b.id);
-const magDone = p => p.status === 'Fertig in Canva';
-const magDot = st => ({ 'Fertig in Canva': 'ok', 'Bilder da': 'warn', 'Text da': 'warn' }[st] || 'red');
+const magItems = (id, section) => App.cache.magazine_pages.filter(p => p.magazine_id == id && (!section || p.section === section)).sort((a, b) => a.id - b.id);
+const magSponsorIds = m => { try { const a = JSON.parse(m.sponsor_ids || '[]'); return Array.isArray(a) ? a.map(Number) : []; } catch { return []; } };
+const magAnswers = it => { try { return JSON.parse(it.answers || '{}') || {}; } catch { return {}; } };
 const magBadge = st => `<span class="badge ${{ Fertig: 'ok', 'Im Druck': 'dark', 'In Arbeit': 'warn' }[st] || ''}">${esc(st || 'Planung')}</span>`;
+const magFace = (src, alt) => src ? `<img class="mag-face" src="${esc(src)}" alt="${esc(alt || '')}">` : '<div class="mag-face"></div>';
+const magPlayedResult = g => g && g.score_us !== null && g.score_us !== '' && g.score_us !== undefined;
 
 F.magazines = () => [
   { key: 'title', label: 'Titel', default: 'Tigers Inteam' },
   { key: 'number', label: 'Ausgabe', placeholder: 'z. B. 1 von 4' },
   { key: 'season', label: 'Saison', default: App.settings.season },
   { key: 'status', label: 'Status', type: 'select', options: MAG_STATUS },
-  { key: 'game_id', label: 'Heimspiel', type: 'ref', ref: { table: 'games', label: gameLabel } },
-  { key: 'pages_target', label: 'Geplanter Umfang (Seiten)', type: 'number', hint: 'Für ein geheftetes Heft durch 4 teilbar, z. B. 32 oder 36.' },
+  { key: 'game_id', label: 'Heimspiel', type: 'ref', ref: { table: 'games', label: gameLabel }, hint: 'Daraus kommen Gegner und Spieltag.' },
   { key: 'deadline', label: 'Redaktionsschluss', type: 'date' },
   { key: 'print_date', label: 'Druckabgabe', type: 'date' },
   { key: 'canva_url', label: 'Canva-Link', full: true },
   { key: 'files', label: 'Dateien', type: 'files', full: true, hint: 'z. B. das fertige PDF für die Druckerei' },
   { key: 'notes', label: 'Notizen', type: 'textarea', rows: 2 },
 ];
-F.magazine_pages = () => [
-  { key: 'page', label: 'Seite', type: 'number' },
-  { key: 'section', label: 'Rubrik', type: 'select', options: MAG_SECTIONS },
-  { key: 'title', label: 'Titel / Thema', full: true },
-  { key: 'status', label: 'Status', type: 'select', options: MAG_PAGE_STATUS },
-  { key: 'owner', label: 'Verantwortlich', list: App.cache.media_team.filter(m => Number(m.active)).map(m => m.name) },
-  { key: 'sponsor_id', label: 'Sponsor', type: 'ref', ref: { table: 'sponsors', label: sponsorLabel }, show: v => v.section === 'Anzeige' },
-  { key: 'player_id', label: 'Spieler / Coach', type: 'ref', ref: { table: 'players', label: playerLabel }, show: v => ['Verabschiedung', 'Interview'].includes(v.section) },
-  { key: 'game_id', label: 'Spiel', type: 'ref', ref: { table: 'games', label: gameLabel }, show: v => v.section === 'Spielbericht' },
-  { key: 'opponent_id', label: 'Gegner', type: 'ref', ref: { table: 'opponents', label: oppLabel }, show: v => v.section === 'Gegner', hint: 'Leer lassen für den Gegner des Heimspiels.' },
-  { key: 'text', label: 'Text für Canva', type: 'textarea', rows: 10, hint: 'Nur der Inhalt. Gestaltet wird in Canva.' },
-  { key: 'files', label: 'Bilder und Dateien', type: 'files', full: true },
-  { key: 'notes', label: 'Notizen', type: 'textarea', rows: 2 },
-];
 
-/* Textbausteine aus den Hub-Daten. Liefert null, wenn es für die Rubrik nichts gibt. */
-function magBuildText(m, v) {
-  const s = App.settings, c = App.cache;
-  const game = byId(c.games, m.game_id);
-  const result = g => g && g.score_us !== null && g.score_us !== '' && g.score_us !== undefined;
-  const person = p => [`${p.number ? '#' + p.number + ' ' : ''}${fullName(p)}`, p.kind === 'Spieler' ? [p.position, p.unit].filter(Boolean).join(', ') : (p.role || p.kind), p.since ? 'Dabei seit ' + p.since : ''].filter(Boolean).join('\n');
-  switch (v.section) {
-    case 'Cover':
-      return [m.title, `Stadionheft ${m.number || ''}`.trim(), m.season ? 'Saison ' + m.season : '', game ? '\n' + gameInfoText(game) : ''].filter(Boolean).join('\n');
-    case 'Coaches': {
-      const roles = F.players.find(f => f.key === 'role').list;
-      const list = c.players.filter(p => p.kind !== 'Spieler' && Number(p.active))
-        .sort((a, b) => ((roles.indexOf(a.role) + 1) || 99) - ((roles.indexOf(b.role) + 1) || 99) || fullName(a).localeCompare(fullName(b)));
-      return list.length ? `Coaches ${s.club_name} ${m.season || ''}`.trim() + '\n\n' + list.map(p => `${fullName(p)}\n${p.role || p.kind}`).join('\n\n') : null;
-    }
-    case 'Kader': {
-      const t = (v.title || '').toLowerCase();
-      const only = t.includes('offense') ? 'Offense' : t.includes('defense') ? 'Defense' : t.includes('special') ? 'Special Teams' : null;
-      const ps = c.players.filter(p => p.kind === 'Spieler' && Number(p.active));
-      const out = ['Offense', 'Defense', 'Special Teams', 'Two-Way', ''].filter(u => !only || u === only).map(u => {
-        const byPos = {};
-        ps.filter(p => (p.unit || '') === u).forEach(p => (byPos[p.position || 'Ohne Position'] ??= []).push(p));
-        const order = Object.keys(byPos).sort((a, b) => ((POSITIONS.indexOf(a) + 1) || 99) - ((POSITIONS.indexOf(b) + 1) || 99));
-        return order.length ? `${u || 'Ohne Unit'}:\n` + order.map(pos => `${POS_PLURAL[pos] || pos}: ` + byPos[pos]
-          .sort((a, b) => (Number(a.number) || 0) - (Number(b.number) || 0))
-          .map(p => `${p.number ? '#' + p.number + ' ' : ''}${fullName(p)}`).join(', ')).join('\n') : '';
-      }).filter(Boolean);
-      return out.length ? `${s.club_name} Kader ${m.season || ''}`.trim() + '\n\n' + out.join('\n\n') : null;
-    }
-    case 'Verabschiedung': {
-      const p = byId(c.players, v.player_id);
-      return p ? `Danke, ${p.first_name || fullName(p)}.\n\n${person(p)}${p.facts ? '\n\n' + p.facts : ''}` : null;
-    }
-    case 'Interview': {
-      const p = byId(c.players, v.player_id);
-      return (p ? person(p) + '\n\n' : '') + MAG_QUESTIONS.map(q => q + '\n').join('\n');
-    }
-    case 'Schiedsrichter':
-      return 'Heute für uns im Einsatz:\n' + MAG_REFS.map(r => r + ': ').join('\n');
-    case 'Gegner': {
-      const o = byId(c.opponents, v.opponent_id) || byId(c.opponents, game?.opponent_id);
-      if (!o) return null;
-      const past = c.games.filter(g => g.opponent_id == o.id && result(g)).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-      const res = g => Number(g.score_us) > Number(g.score_them) ? 'Sieg' : Number(g.score_us) < Number(g.score_them) ? 'Niederlage' : 'Unentschieden';
-      return [`Zum heutigen Heimspiel begrüßen wir ${o.name}${o.city ? ' aus ' + o.city : ''}.`, o.instagram ? 'Instagram: ' + handle(o.instagram) : '', o.notes || '',
-        past.length ? '\nBisherige Duelle:\n' + past.map(g => `${fmtDate(g.date)}, ${Number(g.home) ? 'Heim' : 'Auswärts'}: ${g.score_us}:${g.score_them} (${res(g)})`).join('\n') : ''].filter(Boolean).join('\n');
-    }
-    case 'Spielbericht': {
-      const g = byId(c.games, v.game_id);
-      if (!g) return null;
-      const o = byId(c.opponents, g.opponent_id)?.name || 'TBA';
-      return [fmtDate(g.date, true), Number(g.home) ? `${s.club_name} vs ${o}` : `${o} vs ${s.club_name}`,
-        result(g) ? `Endstand ${g.score_us}:${g.score_them}${g.quarters ? ' (' + g.quarters + ')' : ''}` : 'Ergebnis noch nicht eingetragen',
-        g.highlights ? '\nNotizen zum Spiel:\n' + g.highlights : ''].filter(Boolean).join('\n');
-    }
-    case 'Anzeige': {
-      const sp = byId(c.sponsors, v.sponsor_id);
-      return sp ? [sp.name, sp.package ? 'Paket: ' + sp.package : '', sp.website, handle(sp.instagram)].filter(Boolean).join('\n') : null;
-    }
-    case 'Rückseite':
-      return ['Join the Tigers!', s.training_text ? 'Training: ' + s.training_text : '', s.club_name, s.instagram ? 'Instagram: @' + s.instagram : ''].filter(Boolean).join('\n');
+function magItemFields(section) {
+  const notes = { key: 'notes', label: 'Interne Notizen', type: 'textarea', rows: 2 };
+  switch (section) {
+    case 'Vorwort': return [
+      { key: 'author', label: 'Autor', list: App.cache.players.filter(p => Number(p.active)).map(fullName) },
+      { key: 'role', label: 'Funktion', placeholder: 'z. B. Social Media Manager' },
+      { key: 'title', label: 'Überschrift', full: true },
+      { key: 'image', label: 'Foto', type: 'image', full: true },
+      { key: 'text', label: 'Text', type: 'textarea', rows: 14 }, notes];
+    case 'Behind the Helmet': return [
+      { key: 'player_id', label: 'Spieler', type: 'ref', ref: { table: 'players', label: playerLabel } },
+      { key: 'image', label: 'Foto (leer lassen für das Foto aus Kader & Staff)', type: 'image', full: true },
+      ...BTH_QUESTIONS.map((q, i) => ({ key: 'q' + i, label: q, type: 'textarea', rows: 2 })), notes];
+    case 'Spielbericht': return [
+      { key: 'game_id', label: 'Spiel', type: 'ref', ref: { table: 'games', label: gameLabel } },
+      { key: 'title', label: 'Überschrift', full: true },
+      { key: 'text', label: 'Text', type: 'textarea', rows: 12, hint: 'Leer lassen: der Hub trägt Ergebnis, Viertel und Notizen aus dem Spielplan ein.' },
+      { key: 'files', label: 'Fotos', type: 'files', full: true }, notes];
+    case 'Schiedsrichter': return [{ key: 'text', label: 'Crew', type: 'textarea', rows: 9 }, notes];
+    default: return [
+      { key: 'title', label: 'Überschrift', full: true },
+      { key: 'text', label: 'Text', type: 'textarea', rows: 10 },
+      { key: 'files', label: 'Bilder und Dateien', type: 'files', full: true }, notes];
   }
-  return null;
 }
 
-/* Hinweise zum Seitenplan: Druck, Lücken, fehlende Zuordnungen, Einwilligungen */
-function magWarnings(m, pages) {
-  const w = [];
-  const nums = pages.map(p => Number(p.page)).filter(n => n > 0);
-  const total = Math.max(0, ...nums);
-  if (total && total % 4) w.push(`Das Heft hat ${total} Seiten. Für ein geheftetes Heft muss die Seitenzahl durch 4 teilbar sein (z. B. ${Math.ceil(total / 4) * 4}).`);
-  if (Number(m.pages_target) && total && Number(m.pages_target) !== total) w.push(`Geplant sind ${m.pages_target} Seiten, im Seitenplan stehen ${total}.`);
-  const dup = [...new Set(nums.filter((n, i) => nums.indexOf(n) !== i))];
-  if (dup.length) w.push(`Doppelt belegt: Seite ${dup.join(', ')}.`);
-  const gaps = []; for (let n = 1; n <= total; n++) if (!nums.includes(n)) gaps.push(n);
-  if (gaps.length) w.push(`Noch frei: Seite ${gaps.join(', ')}.`);
-  const noNum = pages.filter(p => !(Number(p.page) > 0)).length;
-  if (noNum) w.push(`${noNum} Seite(n) ohne Seitenzahl.`);
-  const adsOpen = pages.filter(p => p.section === 'Anzeige' && !p.sponsor_id).length;
-  if (adsOpen) w.push(`${adsOpen} Anzeigenseite(n) noch ohne Sponsor.`);
-  const placed = new Set(pages.map(p => String(p.sponsor_id)));
-  const missing = App.cache.sponsors.filter(sp => Number(sp.active) && !placed.has(String(sp.id)));
-  if (missing.length && pages.some(p => p.section === 'Anzeige')) w.push(`Aktive Sponsoren ohne Anzeige: ${missing.map(sp => esc(sp.name)).join(', ')}.`);
-  pages.filter(p => p.player_id && ['Verabschiedung', 'Interview'].includes(p.section)).forEach(p => {
-    const pl = byId(App.cache.players, p.player_id);
-    if (pl && !Number(pl.consent)) w.push(`Seite ${p.page || '?'}: Für ${esc(fullName(pl))} liegt keine Foto-Einwilligung vor.`);
-  });
-  const d = daysUntil(m.deadline), open = pages.filter(p => !magDone(p)).length;
-  if (d !== null && m.status !== 'Fertig' && open) w.push(d < 0 ? `Redaktionsschluss war am ${fmtDate(m.deadline)}, ${open} Seite(n) sind noch nicht fertig.` : `Redaktionsschluss in ${d} Tag(en), ${open} Seite(n) sind noch nicht fertig.`);
-  return w;
+/* ---------- Texte für Canva ---------- */
+function magPersonLine(p) {
+  return p ? [`${p.number ? '#' + p.number + ' ' : ''}${fullName(p)}`, p.kind === 'Spieler' ? [p.position, p.unit].filter(Boolean).join(', ') : (p.role || p.kind)].filter(Boolean).join(', ') : '';
+}
+function magGameText(g) {
+  if (!g) return '';
+  const o = byId(App.cache.opponents, g.opponent_id)?.name || 'TBA', club = App.settings.club_name;
+  return [fmtDate(g.date, true), Number(g.home) ? `${club} vs ${o}` : `${o} vs ${club}`,
+    magPlayedResult(g) ? `Endstand ${g.score_us}:${g.score_them}${g.quarters ? ' (' + g.quarters + ')' : ''}` : '', g.highlights || ''].filter(Boolean).join('\n');
+}
+function magCoaches() {
+  const roles = F.players.find(f => f.key === 'role').list;
+  return App.cache.players.filter(p => p.kind !== 'Spieler' && Number(p.active))
+    .sort((a, b) => ((roles.indexOf(a.role) + 1) || 99) - ((roles.indexOf(b.role) + 1) || 99) || fullName(a).localeCompare(fullName(b)));
+}
+// Kader nach Unit und Position: [{ unit, groups: [{ pos, label, players }] }]
+function magRoster() {
+  const ps = App.cache.players.filter(p => p.kind === 'Spieler' && Number(p.active));
+  return ['Offense', 'Defense', 'Special Teams', 'Two-Way', ''].map(u => {
+    const byPos = {};
+    ps.filter(p => (p.unit || '') === u).forEach(p => (byPos[p.position || 'Ohne Position'] ??= []).push(p));
+    const groups = Object.keys(byPos).sort((a, b) => ((POSITIONS.indexOf(a) + 1) || 99) - ((POSITIONS.indexOf(b) + 1) || 99))
+      .map(pos => ({ pos, label: POS_PLURAL[pos] || pos, players: byPos[pos].sort((a, b) => (Number(a.number) || 0) - (Number(b.number) || 0)) }));
+    return { unit: u || 'Ohne Unit', groups };
+  }).filter(u => u.groups.length);
+}
+const magRosterText = units => units.map(u => `${u.unit}:\n` + u.groups.map(g => `${g.label}: ` +
+  g.players.map(p => `${p.number ? '#' + p.number + ' ' : ''}${fullName(p)}`).join(', ')).join('\n')).join('\n\n');
+function magOpponentText(m) {
+  const g = byId(App.cache.games, m.game_id), o = byId(App.cache.opponents, g?.opponent_id);
+  if (!o) return '';
+  const past = App.cache.games.filter(x => x.opponent_id == o.id && magPlayedResult(x)).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  const res = x => Number(x.score_us) > Number(x.score_them) ? 'Sieg' : Number(x.score_us) < Number(x.score_them) ? 'Niederlage' : 'Unentschieden';
+  return [`Zum heutigen Heimspiel begrüßen wir ${o.name}${o.city ? ' aus ' + o.city : ''}.`, o.instagram ? 'Instagram: ' + handle(o.instagram) : '', o.notes || '',
+    past.length ? '\nBisherige Duelle:\n' + past.map(x => `${fmtDate(x.date)}, ${Number(x.home) ? 'Heim' : 'Auswärts'}: ${x.score_us}:${x.score_them} (${res(x)})`).join('\n') : ''].filter(Boolean).join('\n');
+}
+function magItemText(it) {
+  if (it.section === 'Vorwort') return [it.title || 'Vorwort', [it.author, it.role].filter(Boolean).join(', '), '', it.text].filter(x => x !== undefined && x !== null).join('\n').trim();
+  if (it.section === 'Behind the Helmet') {
+    const a = magAnswers(it);
+    return ['Behind the Helmet', magPersonLine(byId(App.cache.players, it.player_id)), '',
+      ...BTH_QUESTIONS.filter(q => (a[q] || '').trim()).map(q => `${q}\n${a[q].trim()}\n`)].join('\n').trim();
+  }
+  return [it.title, it.text].filter(Boolean).join('\n\n');
+}
+function magSponsorsText(m) {
+  return App.cache.sponsors.filter(s => magSponsorIds(m).includes(s.id))
+    .sort((a, b) => ((SPONSOR_PACKAGES.indexOf(a.package) + 1) || 99) - ((SPONSOR_PACKAGES.indexOf(b.package) + 1) || 99) || (a.name || '').localeCompare(b.name || ''))
+    .map(s => [s.name, s.package ? '(' + s.package + ')' : '', s.website || ''].filter(Boolean).join(' ')).join('\n');
+}
+
+/* Was fehlt noch? [Bereich, erledigt, Hinweis] */
+function magChecklist(m) {
+  const has = s => magItems(m.id, s).length > 0, sp = magSponsorIds(m).length;
+  return [
+    ['Sponsoren', sp > 0, sp ? `${sp} ausgewählt` : 'noch keine ausgewählt'],
+    ['Vorwort', has('Vorwort')],
+    ['Gegner', !!m.game_id, m.game_id ? '' : 'kein Heimspiel zugeordnet'],
+    ['Behind the Helmet', has('Behind the Helmet')],
+    ['Spielberichte', has('Spielbericht')],
+    ['Schiedsrichter', has('Schiedsrichter')],
+    ['Fan-Info', has('Fan-Info')],
+    ['Jugend', has('Jugend')],
+    ['Rückseite', has('Rückseite')],
+  ];
 }
 
 App.pages.magazine = async (view, args) => {
-  await Promise.all([load('magazines', true), load('magazine_pages', true), loadAll('games', 'opponents', 'sponsors', 'players', 'media_team')]);
+  await Promise.all([load('magazines', true), load('magazine_pages', true), loadAll('games', 'opponents', 'sponsors', 'players')]);
   if (args[0]) return magazineDetail(view, Number(args[0]));
   const mags = [...App.cache.magazines].sort((a, b) => (b.season || '').localeCompare(a.season || '') || (b.deadline || '').localeCompare(a.deadline || '') || b.id - a.id);
   view.innerHTML = `
     <div class="page-head"><h1>Stadionheft<small>${mags.length} ${mags.length === 1 ? 'Ausgabe' : 'Ausgaben'}</small></h1>
       <div class="btn-row"><button class="pp btn primary" id="mg_new">+ Neues Heft</button></div></div>
     <div class="grid g3">${mags.map(m => {
-      const pages = magPages(m.id), done = pages.filter(magDone).length, g = byId(App.cache.games, m.game_id), d = daysUntil(m.deadline);
+      const cl = magChecklist(m), ok = cl.filter(c => c[1]).length, g = byId(App.cache.games, m.game_id), d = daysUntil(m.deadline);
       return `<a class="card mag-card" href="#/magazine/${m.id}">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><h3 style="margin:0">${esc(magLabel(m))}</h3>${magBadge(m.status)}</div>
         <div class="muted small" style="margin:4px 0 10px">${g ? esc(gameLabel(g)) : 'Kein Heimspiel zugeordnet'}</div>
-        <div class="progress"><b style="width:${pages.length ? Math.round(done / pages.length * 100) : 0}%"></b></div>
-        <div class="small" style="margin-top:6px">${done} von ${pages.length} Seiten fertig${m.deadline && m.status !== 'Fertig' ? ` | Redaktionsschluss ${fmtDate(m.deadline)}${d !== null && d >= 0 ? ` (in ${d} Tagen)` : d < 0 ? ' (vorbei)' : ''}` : ''}</div>
+        <div class="progress"><b style="width:${Math.round(ok / cl.length * 100)}%"></b></div>
+        <div class="small" style="margin-top:6px">${ok} von ${cl.length} Bereichen gefüllt${m.deadline && m.status !== 'Fertig' ? ` | Redaktionsschluss ${fmtDate(m.deadline)}${d >= 0 ? ` (in ${d} Tagen)` : ' (vorbei)'}` : ''}</div>
       </a>`;
-    }).join('') || '<div class="card empty" style="grid-column:1/-1">Noch kein Stadionheft angelegt. Mit „+ Neues Heft“ geht es los, den Aufbau kannst du danach aus der Vorlage übernehmen.</div>'}</div>`;
+    }).join('') || '<div class="card empty" style="grid-column:1/-1">Noch kein Stadionheft angelegt. Mit „+ Neues Heft“ geht es los.</div>'}</div>`;
   $('#mg_new').onclick = async () => {
-    const r = await editRecord('magazines', F.magazines(), { title: 'Tigers Inteam', season: App.settings.season, status: 'Planung', pages_target: MAG_TEMPLATE.length }, { newTitle: 'Neues Stadionheft' });
+    const r = await editRecord('magazines', F.magazines(), { title: 'Tigers Inteam', season: App.settings.season, status: 'Planung' }, { newTitle: 'Neues Stadionheft' });
     if (r?.id) go(`#/magazine/${r.id}`);
   };
 };
@@ -654,108 +637,146 @@ App.pages.magazine = async (view, args) => {
 async function magazineDetail(view, id) {
   const m = byId(App.cache.magazines, id);
   if (!m) { view.innerHTML = '<div class="card empty">Dieses Heft gibt es nicht mehr. <a href="#/magazine">Zur Übersicht</a></div>'; return; }
-  const pages = magPages(id), done = pages.filter(magDone).length;
+  const mw = can('medien', 2);
   const g = byId(App.cache.games, m.game_id);
-  const warnings = magWarnings(m, pages);
-  const total = Math.max(Number(m.pages_target) || 0, ...pages.map(p => Number(p.page) || 0));
-  const prev = App.cache.magazines.filter(x => x.id !== id && magPages(x.id).length).sort((a, b) => (b.season || '').localeCompare(a.season || '') || b.id - a.id)[0];
-  const content = p => p.section === 'Anzeige' ? (byId(App.cache.sponsors, p.sponsor_id)?.name || 'Sponsor offen')
-    : p.player_id ? `${p.title || ''} ${fullName(byId(App.cache.players, p.player_id))}`.trim()
-    : p.game_id ? `${p.title || ''} ${gameLabel(byId(App.cache.games, p.game_id) || {})}`.trim() : (p.title || '');
+  const prev = App.cache.magazines.filter(x => x.id !== id).sort((a, b) => (b.season || '').localeCompare(a.season || '') || b.id - a.id)[0];
+  const rerender = async () => { const st = $('#main').scrollTop; await Promise.all([load('magazines', true), load('magazine_pages', true)]); await magazineDetail(view, id); $('#main').scrollTop = st; };
+  const copyBtn = key => `<button class="btn sm keep" data-copy="${key}">Text kopieren</button>`;
+  const texts = {};   // Bereich -> Text für „Text kopieren“
 
-  // Doppelseiten wie im gedruckten Heft: 1 | 2-3 | 4-5 | ... | letzte Seite allein
-  const slot = n => {
-    const here = pages.filter(p => Number(p.page) === n);
-    if (!here.length) return `<div class="mag-page empty" data-new="${n}"><span class="pno">${n}</span><span>frei</span></div>`;
-    return here.map(p => `<div class="mag-page st-${magDot(p.status)} ${p.section === 'Anzeige' ? 'ad' : ''}" data-pg="${p.id}" title="${esc(p.status)}">
-      <span class="pno">${n}</span><b>${esc(p.section || '')}</b><span>${esc(content(p))}</span></div>`).join('');
+  // --- Sponsoren
+  const chosen = magSponsorIds(m);
+  const sponsors = [...App.cache.sponsors].filter(s => Number(s.active) || chosen.includes(s.id))
+    .sort((a, b) => ((SPONSOR_PACKAGES.indexOf(a.package) + 1) || 99) - ((SPONSOR_PACKAGES.indexOf(b.package) + 1) || 99) || (a.name || '').localeCompare(b.name || ''));
+  texts.sponsors = magSponsorsText(m);
+  const secSponsors = `<div class="mag-sponsors">${sponsors.map(s => {
+    const files = parseFiles(s.files);
+    return `<label class="mag-sponsor ${chosen.includes(s.id) ? 'on' : ''}"><input type="checkbox" data-sp="${s.id}" ${chosen.includes(s.id) ? 'checked' : ''} ${mw ? '' : 'disabled'}>
+      ${s.logo ? `<img class="thumb logo" src="${esc(s.logo)}">` : '<div class="thumb"></div>'}
+      <span><b>${esc(s.name)}</b><span class="muted small">${esc(s.package || '')}${files.length ? ` | ${files.map(f => `<a href="${esc(f.path)}" target="_blank" rel="noopener">${esc(f.name)}</a>`).join(', ')}` : ''}</span></span></label>`;
+  }).join('') || '<div class="muted">Keine aktiven Sponsoren eingetragen.</div>'}</div>
+    ${mw && sponsors.length ? '<div class="btn-row" style="margin-top:10px"><button class="btn sm" id="mg_spall">Alle aktiven auswählen</button></div>' : ''}`;
+
+  // --- Trainerteam
+  const coaches = magCoaches();
+  texts.coaches = coaches.length ? `Coaches ${App.settings.club_name} ${m.season || ''}`.trim() + '\n\n' + coaches.map(p => `${fullName(p)}\n${p.role || p.kind}`).join('\n\n') : '';
+  const secCoaches = coaches.length ? `<div class="mag-people">${coaches.map(p => `<div class="mag-person">${magFace(p.photo, fullName(p))}<b>${esc(fullName(p))}</b><span class="muted small">${esc(p.role || p.kind)}</span>${p.photo ? '' : '<span class="warnline">Foto fehlt</span>'}</div>`).join('')}</div>`
+    : '<div class="muted">Unter „Kader &amp; Staff“ sind noch keine Coaches eingetragen.</div>';
+
+  // --- Kader nach Positionen
+  const roster = magRoster();
+  texts.roster = roster.length ? `${App.settings.club_name} Kader ${m.season || ''}`.trim() + '\n\n' + magRosterText(roster) : '';
+  roster.forEach(u => { texts['roster_' + u.unit] = magRosterText([u]); });
+  const secRoster = roster.length ? `<div class="grid g3">${roster.map(u => `<div class="mag-unit"><div class="mag-unit-head"><h3>${esc(u.unit)}</h3>${copyBtn('roster_' + u.unit)}</div>
+      ${u.groups.map(gr => `<div class="mag-pos"><b>${esc(gr.label)}</b> <span class="muted small">(${gr.players.length})</span><div>${gr.players.map(p => `${p.number ? '#' + esc(p.number) + ' ' : ''}${esc(fullName(p))}`).join('<br>')}</div></div>`).join('')}</div>`).join('')}</div>`
+    : '<div class="muted">Unter „Kader &amp; Staff“ sind noch keine aktiven Spieler eingetragen.</div>';
+
+  // --- Beiträge (Vorwort, Behind the Helmet, ...)
+  const itemHtml = it => {
+    const pl = byId(App.cache.players, it.player_id), gm = byId(App.cache.games, it.game_id), files = parseFiles(it.files);
+    const img = it.image || (it.section === 'Behind the Helmet' ? pl?.photo : '');
+    const head = it.section === 'Vorwort' ? [it.author, it.role].filter(Boolean).join(', ') || 'Autor fehlt'
+      : it.section === 'Behind the Helmet' ? magPersonLine(pl) || 'Spieler fehlt'
+      : it.section === 'Spielbericht' ? (gm ? gameLabel(gm) : 'Spiel fehlt') : '';
+    const body = it.section === 'Behind the Helmet' ? `${Object.values(magAnswers(it)).filter(a => (a || '').trim()).length} von ${BTH_QUESTIONS.length} Fragen beantwortet` : (it.text || '');
+    texts['item' + it.id] = magItemText(it);
+    const warn = it.section === 'Behind the Helmet' && pl && !Number(pl.consent) ? '<div class="warnline">Keine Foto-Einwilligung hinterlegt</div>' : '';
+    return `<div class="mag-item">${['Vorwort', 'Behind the Helmet'].includes(it.section) ? magFace(img) : ''}
+      <div class="grow"><b>${esc(it.title || head || MAG_ITEMS[it.section]?.title || '')}</b>${it.title && head ? `<div class="muted small">${esc(head)}</div>` : ''}
+        ${body ? `<div class="mag-text">${esc(body)}</div>` : '<div class="muted small">Noch kein Text</div>'}${warn}
+        ${files.length ? `<div class="small">${files.map(f => `<a href="${esc(f.path)}" target="_blank" rel="noopener">${esc(f.name)}</a>`).join(' | ')}</div>` : ''}</div>
+      <div class="btn-row">${copyBtn('item' + it.id)}<button class="btn sm ghost keep" data-item="${it.id}">${mw ? 'Bearbeiten' : 'Ansehen'}</button></div></div>`;
   };
-  const spreads = [];
-  if (total) { spreads.push([1]); for (let n = 2; n <= total; n += 2) spreads.push(n + 1 <= total ? [n, n + 1] : [n]); }
+  const itemSection = (section, extra = '') => {
+    const list = magItems(id, section), cfg = MAG_ITEMS[section];
+    texts['sec_' + section] = list.map(magItemText).join('\n\n\n');
+    return `${extra}${list.map(itemHtml).join('')}
+      ${mw && !(cfg.single && list.length) ? `<button class="btn sm" data-add="${esc(section)}">+ ${esc(cfg.add)}</button>` : ''}
+      ${!list.length && !mw && !extra ? '<div class="muted">Noch nichts eingetragen.</div>' : ''}`;
+  };
 
+  // --- Gegner automatisch aus dem Heimspiel
+  texts.opponent = magOpponentText(m);
+  const oppAuto = texts.opponent ? `<div class="mag-text" style="margin-bottom:10px">${esc(texts.opponent)}</div>` : '<div class="muted" style="margin-bottom:10px">Dem Heft ist noch kein Heimspiel zugeordnet (Heft bearbeiten).</div>';
+
+  // --- Spielberichte: gespielte Spiele der Saison ohne Bericht als Vorschlag
+  const reported = new Set(magItems(id, 'Spielbericht').map(i => String(i.game_id)));
+  const openGames = App.cache.games.filter(x => magPlayedResult(x) && (!m.season || x.season == m.season) && !reported.has(String(x.id)))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const gameHint = mw && openGames.length ? `<div class="muted small" style="margin-bottom:8px">Gespielt, aber noch ohne Bericht: ${openGames.map(x => `<a href="#" data-addgame="${x.id}">${esc(gameLabel(x))}</a>`).join(', ')}</div>` : '';
+
+  const sections = [
+    ['sponsors', 'Sponsoren', secSponsors, 'sponsors'],
+    ['vorwort', 'Vorwort', itemSection('Vorwort'), 'sec_Vorwort'],
+    ['coaches', 'Trainerteam', secCoaches, 'coaches'],
+    ['roster', 'Kader nach Positionen', secRoster, 'roster'],
+    ['bth', 'Behind the Helmet', itemSection('Behind the Helmet'), 'sec_Behind the Helmet'],
+    ['opponent', 'Gegner', itemSection('Gegner', oppAuto), 'opponent'],
+    ['reports', 'Spielberichte', itemSection('Spielbericht', gameHint), 'sec_Spielbericht'],
+    ['refs', 'Schiedsrichter', itemSection('Schiedsrichter'), 'sec_Schiedsrichter'],
+    ['fan', 'Fan-Info', itemSection('Fan-Info'), 'sec_Fan-Info'],
+    ['youth', 'Jugend', itemSection('Jugend'), 'sec_Jugend'],
+    ['back', 'Rückseite', itemSection('Rückseite'), 'sec_Rückseite'],
+  ];
+  // Eigener Text zum Gegner hängt an den automatischen an
+  if (texts['sec_Gegner']) texts.opponent = [texts.opponent, texts['sec_Gegner']].filter(Boolean).join('\n\n');
+  texts.all = sections.map(([, title, , key]) => texts[key] ? `===== ${title} =====\n\n${texts[key]}` : '').filter(Boolean).join('\n\n\n');
+
+  const cl = magChecklist(m), d = daysUntil(m.deadline);
   view.innerHTML = `
-    <div class="page-head"><h1>${esc(magLabel(m))}<small><a href="#/magazine">Stadionheft</a> | ${g ? esc(gameLabel(g)) : 'kein Heimspiel zugeordnet'} | ${done} von ${pages.length} Seiten fertig</small></h1>
+    <div class="page-head"><h1>${esc(magLabel(m))}<small><a href="#/magazine">Stadionheft</a> | ${g ? esc(gameLabel(g)) : 'kein Heimspiel zugeordnet'}${m.deadline ? ` | Redaktionsschluss ${fmtDate(m.deadline)}${m.status !== 'Fertig' && d !== null ? (d >= 0 ? ` (in ${d} Tagen)` : ' (vorbei)') : ''}` : ''}</small></h1>
       <div class="btn-row">${magBadge(m.status)}
         ${m.canva_url ? `<a class="btn keep" href="${esc(m.canva_url)}" target="_blank" rel="noopener">In Canva öffnen</a>` : ''}
-        <button class="btn keep" id="mg_copy">Seitenplan kopieren</button>
-        <button class="pp btn" id="mg_edit">Heft bearbeiten</button>
-        <button class="pp btn primary" id="mg_add">+ Seite</button></div></div>
-    ${!pages.length ? `<div class="card" style="margin-bottom:16px"><h2>Wie soll das Heft aufgebaut sein?</h2>
-        <p class="muted">Der Aufbau aus 2026 hat ${MAG_TEMPLATE.length} Seiten: Cover, Vorwort, Verabschiedungen, Coaches, Kader, Interviews, Fan-Infos, Schiedsrichter, Gegner, Historie, Spielberichte, Jugend und Rückseite, dazwischen die Anzeigen.</p>
-        <div class="btn-row"><button class="pp btn primary" id="mg_tpl">Aufbau aus Vorlage 2026</button>
-        ${prev ? `<button class="pp btn" id="mg_prev">Aufbau aus „${esc(magLabel(prev))}“ übernehmen</button>` : ''}</div></div>` : ''}
-    ${warnings.length ? `<div class="card" style="margin-bottom:16px"><h2>Hinweise</h2><div class="list">${warnings.map(t => `<div class="list-item"><span class="dot warn"></span><div class="grow">${t}</div></div>`).join('')}</div></div>` : ''}
-    ${spreads.length ? `<h2>Seitenplan</h2><div class="mag-spreads">${spreads.map(sp => `<div class="mag-spread">${sp.map(slot).join('')}</div>`).join('')}</div>
-      <div class="muted small" style="margin:8px 0 18px"><span class="dot red"></span> offen <span class="dot warn" style="margin-left:10px"></span> Text oder Bilder da <span class="dot ok" style="margin-left:10px"></span> fertig in Canva</div>` : ''}
-    ${pages.length ? `<div class="table-wrap"><table><thead><tr><th>Seite</th><th>Rubrik</th><th>Inhalt</th><th>Verantwortlich</th><th>Status</th><th>Dateien</th><th></th></tr></thead><tbody>
-      ${pages.map(p => { const n = parseFiles(p.files).length; return `<tr>
-        <td><b>${esc(p.page || '')}</b></td><td>${esc(p.section || '')}</td><td>${esc(content(p))}</td><td>${esc(p.owner || '')}</td>
-        <td><span class="dot ${magDot(p.status)}"></span> ${esc(p.status || 'Offen')}</td>
-        <td>${n ? `<span class="badge">${n}</span>` : ''}</td>
-        <td class="actions"><button class="btn sm ghost keep" data-pg="${p.id}">${App.readOnly ? 'Ansehen' : 'Bearbeiten'}</button></td></tr>`; }).join('')}
-      </tbody></table></div>` : ''}`;
+        <button class="btn keep" data-copy="all">Alles kopieren</button>
+        ${prev ? `<button class="pp btn" id="mg_prev" title="Sponsoren, Fan-Info, Jugend und Rückseite">Aus „${esc(magLabel(prev))}“ übernehmen</button>` : ''}
+        <button class="pp btn" id="mg_edit">Heft bearbeiten</button></div></div>
+    <div class="card mag-check">${cl.map(([name, ok, hint]) => `<span class="mag-chip ${ok ? 'ok' : ''}" title="${esc(hint || '')}"><span class="dot ${ok ? 'ok' : 'red'}"></span>${esc(name)}</span>`).join('')}</div>
+    <div class="mag-nav">${sections.map(([key, title]) => `<a href="#" data-jump="${key}">${esc(title)}</a>`).join('')}</div>
+    ${sections.map(([key, title, html, copyKey]) => `<section class="card mag-sec" id="mag_${key}">
+      <div class="mag-sec-head"><h2>${esc(title)}</h2>${texts[copyKey] ? copyBtn(copyKey) : ''}</div>${html}</section>`).join('')}`;
 
-  $$('[data-pg]', view).forEach(el => el.onclick = () => editMagPage(m, byId(pages, el.dataset.pg)));
-  $$('[data-new]', view).forEach(el => el.onclick = () => { if (!App.readOnly) editMagPage(m, { page: Number(el.dataset.new), status: 'Offen' }); });
-  $('#mg_add').onclick = () => editMagPage(m, { page: Math.max(0, ...pages.map(p => Number(p.page) || 0)) + 1, status: 'Offen' });
+  $$('[data-copy]', view).forEach(b => b.onclick = () => copyText(noDashes(texts[b.dataset.copy] || '')));
+  $$('[data-jump]', view).forEach(a => a.onclick = e => { e.preventDefault(); $('#mag_' + a.dataset.jump).scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  $$('[data-item]', view).forEach(b => b.onclick = async () => { if (await editMagItem(m, byId(App.cache.magazine_pages, b.dataset.item))) rerender(); });
+  $$('[data-add]', view).forEach(b => b.onclick = async () => { if (await editMagItem(m, { section: b.dataset.add })) rerender(); });
+  $$('[data-addgame]', view).forEach(a => a.onclick = async e => { e.preventDefault(); if (await editMagItem(m, { section: 'Spielbericht', game_id: Number(a.dataset.addgame) })) rerender(); });
+  const saveSponsors = async ids => { await api(`magazines/${id}`, 'PUT', { sponsor_ids: JSON.stringify(ids) }); toast('Sponsoren gespeichert'); rerender(); };
+  $$('[data-sp]', view).forEach(cb => cb.onchange = () => saveSponsors($$('[data-sp]', view).filter(c => c.checked).map(c => Number(c.dataset.sp))));
+  if ($('#mg_spall')) $('#mg_spall').onclick = () => saveSponsors(App.cache.sponsors.filter(s => Number(s.active)).map(s => s.id));
   $('#mg_edit').onclick = async () => {
     const r = await editRecord('magazines', F.magazines(), m, { editTitle: 'Heft bearbeiten' });
-    if (r?.deleted) { invalidate('magazine_pages'); go('#/magazine'); } else if (r) route();
+    if (r?.deleted) { invalidate('magazine_pages'); go('#/magazine'); } else if (r) rerender();
   };
-  $('#mg_copy').onclick = () => copyText(noDashes(`${magLabel(m)}${g ? '\n' + gameLabel(g) : ''}\n\n` +
-    pages.map(p => `S. ${p.page || '?'}  ${p.section || ''}${content(p) ? ': ' + content(p) : ''}${p.owner ? ' (' + p.owner + ')' : ''} [${p.status || 'Offen'}]`).join('\n')));
-  if ($('#mg_tpl')) $('#mg_tpl').onclick = () => magCreatePages(m, MAG_TEMPLATE.map(([section, title], i) => ({ page: i + 1, section, title, status: 'Offen' })));
-  if ($('#mg_prev')) $('#mg_prev').onclick = () => magCreatePages(m, magPages(prev.id).map(p => {
-    const reuse = MAG_REUSE.includes(p.section);
-    return { page: p.page, section: p.section, title: p.title, owner: p.owner, sponsor_id: p.sponsor_id,
-      text: reuse ? p.text : '', files: reuse ? p.files : '', status: reuse && p.text ? 'Text da' : 'Offen' };
-  }));
+  if ($('#mg_prev')) $('#mg_prev').onclick = async () => {
+    const take = Object.keys(MAG_ITEMS).filter(s => MAG_ITEMS[s].reuse && !magItems(id, s).length);
+    const items = magItems(prev.id).filter(i => take.includes(i.section));
+    const sp = !magSponsorIds(m).length && magSponsorIds(prev).length;
+    if (!items.length && !sp) return toast('Nichts zu übernehmen');
+    if (!confirmBox(`Aus „${magLabel(prev)}“ übernehmen: ${[sp ? 'Sponsorenauswahl' : '', ...new Set(items.map(i => i.section))].filter(Boolean).join(', ')}?`)) return;
+    if (sp) await api(`magazines/${id}`, 'PUT', { sponsor_ids: prev.sponsor_ids });
+    for (const i of items) await api('magazine_pages', 'POST', { magazine_id: id, section: i.section, title: i.title, text: i.text, files: i.files, image: i.image });
+    toast('Übernommen'); rerender();
+  };
 }
 
-async function magCreatePages(m, list) {
-  if (!confirmBox(`${list.length} Seiten im Seitenplan anlegen?`)) return;
-  toast('Lege Seitenplan an ...');
-  for (const p of list) await api('magazine_pages', 'POST', { ...p, magazine_id: m.id });
-  if (!Number(m.pages_target)) await api(`magazines/${m.id}`, 'PUT', { pages_target: list.length });
-  invalidate('magazine_pages', 'magazines');
-  toast('Seitenplan angelegt');
-  route();
-}
-
-async function editMagPage(m, rec) {
-  const fields = F.magazine_pages();
-  const r = await editRecord('magazine_pages', fields, rec, {
-    newTitle: `Neue Seite ${rec.page || ''}`.trim(), editTitle: `Seite ${rec.page || ''}${App.readOnly ? '' : ' bearbeiten'}`.trim(), fixed: { magazine_id: m.id },
-    onOpen: box => {
-      const textField = $('[data-fkey="text"]', box);
-      textField.insertAdjacentHTML('beforebegin', `<div class="field full mag-tools"><div class="btn-row">
-        <button type="button" class="btn sm" id="mt_fill">Daten aus dem Hub einfügen</button>
-        <button type="button" class="btn sm" id="mt_spfiles">Dateien vom Sponsor übernehmen</button>
-        <button type="button" class="btn sm" id="mt_copy">Text kopieren</button></div></div>`);
-      const vals = () => readForm(box, fields);
-      const sync = () => {
-        const v = vals(), sp = byId(App.cache.sponsors, v.sponsor_id);
-        $('#mt_fill', box).style.display = !App.readOnly && magBuildText(m, v) !== null ? '' : 'none';
-        $('#mt_spfiles', box).style.display = !App.readOnly && v.section === 'Anzeige' && parseFiles(sp?.files).length ? '' : 'none';
-      };
-      box.addEventListener('change', sync); sync();
-      $('#mt_fill', box).onclick = () => {
-        const t = noDashes(magBuildText(m, vals()) || ''), ta = $('#f_text', box);
-        if (ta.value.trim() && !confirmBox('Vorhandenen Text durch die Daten aus dem Hub ersetzen?')) return;
-        ta.value = t; toast('Eingefügt');
-      };
-      $('#mt_spfiles', box).onclick = () => {
-        const sp = byId(App.cache.sponsors, vals().sponsor_id), hidden = $('#f_files', box);
-        const have = parseFiles(hidden.value), paths = new Set(have.map(f => f.path));
-        const add = parseFiles(sp?.files).filter(f => !paths.has(f.path));
-        hidden.value = JSON.stringify([...have, ...add]);
-        $('[data-filesbox="files"]', box).redraw();
-        toast(add.length ? `${add.length} Datei(en) übernommen` : 'Schon alle übernommen');
-      };
-      $('#mt_copy', box).onclick = () => copyText(noDashes($('#f_text', box).value));
+async function editMagItem(m, rec) {
+  const section = rec.section, fields = magItemFields(section), isNew = !rec.id;
+  rec = { ...rec };
+  if (section === 'Behind the Helmet') { const a = magAnswers(rec); BTH_QUESTIONS.forEach((q, i) => { rec['q' + i] = a[q] || ''; }); }
+  if (isNew && section === 'Vorwort') rec.title = 'Vorwort';
+  if (isNew && section === 'Schiedsrichter') rec.text = 'Heute für uns im Einsatz:\n' + MAG_REFS.map(r => r + ': ').join('\n');
+  if (isNew && section === 'Rückseite') { const s = App.settings; rec.title = 'Join the Tigers!'; rec.text = [s.training_text ? 'Training: ' + s.training_text : '', s.club_name, s.instagram ? 'Instagram: @' + s.instagram : ''].filter(Boolean).join('\n'); }
+  const name = MAG_ITEMS[section]?.title || section;
+  return editRecord('magazine_pages', fields, rec, {
+    newTitle: name, editTitle: name, fixed: { magazine_id: m.id, section },
+    beforeSave: vals => {
+      if (section === 'Behind the Helmet') {
+        const a = {}; BTH_QUESTIONS.forEach((q, i) => { a[q] = vals['q' + i] || ''; delete vals['q' + i]; });
+        vals.answers = JSON.stringify(a);
+      }
+      if (section === 'Spielbericht' && !String(vals.text || '').trim()) vals.text = magGameText(byId(App.cache.games, vals.game_id));
     },
   });
-  if (r) route();
 }
 
 App.pages.cards = async (view) => {
