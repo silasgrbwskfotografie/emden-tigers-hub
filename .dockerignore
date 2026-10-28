@@ -1,0 +1,13 @@
+data
+.env
+*.zip
+__pycache__
+Start.bat
+.git
+.gitignore
+CLAUDE.md
+CHANGELOG.md
+INSTALLATION.md
+LIESMICH.txt
+setup.sh
+update.sh

@@ -1,0 +1,90 @@
+EMDEN TIGERS HUB 3.0
+TeamHub der Emden Tigers: Medien, Verein, Mitglieder, Finanzen
+==================================================================
+
+AUF DEM VSERVER
+Die Anleitung steht in INSTALLATION.md (Kurzfassung: Ordner hochladen,
+"sudo bash setup.sh" ausführen, fertig).
+
+LOKAL UNTER WINDOWS
+
+STARTEN
+1. Einmalig Python 3 installieren: https://www.python.org/downloads/
+   Beim Installieren "Add python.exe to PATH" anhaken.
+2. Doppelklick auf "Start.bat".
+   Der Browser öffnet sich automatisch mit http://127.0.0.1:8765
+3. Beim ersten Start legst du im Browser einen Zugang (Benutzer und
+   Passwort) an. Danach meldest du dich damit an.
+4. Zum Beenden das schwarze Fenster schließen.
+
+Es werden keine weiteren Pakete benötigt und nichts ins Internet geschickt.
+Der Hub ist nur auf diesem Rechner erreichbar.
+
+
+BEREICHE UND RECHTE
+Medien, Verein, Mitglieder, Finanzen. Gruppen bekommen pro Bereich
+"kein Zugriff", "Lesen" oder "Bearbeiten", einzelne Personen können
+Ausnahmen bekommen. Zugänge werden per Einladungslink verschickt.
+Details: INSTALLATION.md, Abschnitt "Konten, Gruppen und Rechte".
+
+ERSTE SCHRITTE
+1. Einstellungen: Vereinslogo hochladen, Instagram-Account und Saison prüfen.
+2. Gegner anlegen (mit Logo und Instagram-Handle).
+3. Spielplan eintragen, Spieltagssponsoren zuordnen.
+4. Kader, Coaches und Staff eintragen, Fotos und Einwilligung hinterlegen.
+5. Sponsoren und Media Team anlegen.
+6. Posts planen: Über "Post planen" (Übersicht, Spielplan, Kader, Sponsoren)
+   einen Eintrag anlegen. Caption-Vorschlag aus den Daten holen, anpassen.
+   Grafik in Canva bauen und den Export im Post ablegen.
+
+
+BEREICHE
+Übersicht        Nächstes Spiel, Content-Check pro Spiel, Hinweise
+Social Media     Spieler aus der Google-Tabelle, wird automatisch eingelesen
+Spieler          (Standard alle 5 Minuten), Änderungsprotokoll, @Namen kopieren
+Postplan         Alle Posts mit Datum, Status, Caption und Canva-Grafik,
+                 Caption-Vorschläge für Gameday, Endstand, Spieler, Sponsor,
+                 Spielplan
+Mediathek        Fotos mit Tags, Upload per Drag and Drop
+Spielplan        Spiele, Ergebnisse, Sponsor, Media-Team-Einteilung,
+                 "Infos kopieren" für Canva, CSV für Canva
+Kader & Staff    Spieler, Coaches, Staff inkl. Einwilligung, CSV für Canva
+Gegner           Logos und Instagram-Handles
+Sponsoren        Pakete, Laufzeit, vereinbarte Posts (wird mitgezählt)
+Media Team       Mitglieder, Einteilung pro Spiel, als WhatsApp-Text kopieren
+Supporter Karte  Verkäufe, bezahlt/offen, Anteil Wolthusen, Sponsorengeld
+
+
+DATEN UND BACKUP
+Alles liegt im Ordner "data":
+  data\tigers.db   Datenbank (SQLite)
+  data\media\      Bilder und Canva-Exporte
+Backup: Einstellungen > "Backup herunterladen" oder einfach den
+Ordner "data" kopieren. Beim Update des Programms den Ordner "data" behalten.
+
+
+SPÄTER: AUTOMATISCH POSTEN
+Die Posts sind schon mit Datum, Uhrzeit, Format und Status gespeichert.
+Für automatisches Veröffentlichen kommt später ein Modul für die
+Instagram-Schnittstelle (Meta) dazu. Dafür werden ein Meta-Entwicklerkonto
+und ein öffentlich erreichbarer Bildspeicher benötigt.
+
+
+CANVA MASSENERSTELLUNG
+Spielplan und Kader lassen sich als CSV exportieren. In Canva unter
+Apps > "Massenerstellung" die CSV hochladen und die Spalten (z. B. Gegner,
+Datum, Kickoff, Name, Nummer) mit den Textfeldern deiner Vorlage verknüpfen.
+So entstehen z. B. alle Gameday- oder Spielerkarten auf einmal.
+Spieler ohne Einwilligung werden nicht mit exportiert.
+
+
+GOOGLE-TABELLE "SOCIAL MEDIA SPIELER"
+Der Hub liest die Tabelle beim Start, alle 5 Minuten und beim Öffnen der
+Seite "Social Media Spieler" ein. Erkannt werden die Spalten Name,
+Spielernummer, Position und Instagram-Name (Reihenfolge egal).
+Neue Spieler werden im Kader angelegt, Änderungen an Nummer, Position und
+Instagram übernommen. Wer aus der Tabelle verschwindet, bleibt im Kader
+und wird nur als "nicht mehr in der Tabelle" angezeigt.
+Voraussetzung: Tabelle freigegeben für "Jeder mit dem Link" (Betrachter)
+und eine Internetverbindung. Link, Intervall und Kader-Übernahme lassen
+sich in den Einstellungen ändern.

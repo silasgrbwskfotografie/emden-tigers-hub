@@ -1,0 +1,17 @@
+# Laufzeitdaten: Datenbank, Bilder, Sicherungen (liegen nur auf dem Server bzw. lokal)
+data/
+
+# Zugangsdaten und Konfiguration des Servers
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Sonstiges
+*.zip
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

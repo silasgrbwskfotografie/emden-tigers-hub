@@ -1,0 +1,39 @@
+services:
+  hub:
+    build: .
+    image: emden-tigers-hub:latest
+    container_name: emden-tigers-hub
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TMH_SECURE_COOKIES: "1"
+      TMH_TRUST_PROXY: "1"
+    volumes:
+      - ./data:/data
+    expose:
+      - "8765"
+    networks: [web]
+
+  caddy:
+    image: caddy:2
+    container_name: tigers-caddy
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - hub
+    networks: [web]
+
+networks:
+  web:
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,11 @@
+# Zeilenenden festlegen, damit Skripte auf dem Linux-Server laufen,
+# auch wenn das Repo unter Windows bearbeitet wird
+* text=auto
+*.sh text eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+Dockerfile text eol=lf
+Caddyfile text eol=lf
+.env.example text eol=lf
+*.bat text eol=crlf
+*.png binary

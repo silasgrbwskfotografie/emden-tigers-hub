@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emden Tigers Hub</title>
+<link rel="icon" href="/static/icon.png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<aside id="sidebar">
+  <div class="brand">
+    <div class="brand-mark" id="brandMark"><img src="/static/logo.png" alt="Emden Tigers"></div>
+    <div>
+      <div class="brand-name" id="brandName">Emden Tigers</div>
+      <div class="brand-sub">Hub</div>
+    </div>
+  </div>
+  <nav id="nav">
+    <a href="#/" data-page="dashboard">Übersicht</a>
+    <a href="#/profile" data-page="profile">Mein Profil</a>
+    <div class="nav-group" data-group="medien">Medien</div>
+    <a href="#/posts" data-page="posts" data-area="medien">Postplan</a>
+    <a href="#/social" data-page="social" data-area="medien">Social Media Spieler</a>
+    <a href="#/media" data-page="media" data-area="medien">Mediathek</a>
+    <a href="#/team" data-page="team" data-area="medien">Media Team</a>
+    <div class="nav-group" data-group="verein">Verein</div>
+    <a href="#/games" data-page="games" data-area="verein">Spielplan</a>
+    <a href="#/players" data-page="players" data-area="verein">Kader &amp; Staff</a>
+    <a href="#/opponents" data-page="opponents" data-area="verein">Gegner</a>
+    <a href="#/sponsors" data-page="sponsors" data-area="verein">Sponsoren</a>
+    <div class="nav-group" data-group="mitglieder">Mitglieder</div>
+    <a href="#/members" data-page="members" data-area="mitglieder">Mitgliederliste</a>
+    <div class="nav-group" data-group="finanzen">Finanzen</div>
+    <a href="#/finance" data-page="finance" data-area="finanzen">Buchungen</a>
+    <a href="#/cards" data-page="cards" data-area="finanzen">Supporter Karte</a>
+    <div class="nav-group" data-group="admin">Verwaltung</div>
+    <a href="#/accounts" data-page="accounts" data-area="admin">Konten</a>
+    <a href="#/groups" data-page="groups" data-area="admin">Gruppen &amp; Rechte</a>
+    <a href="#/settings" data-page="settings" data-area="admin">Einstellungen</a>
+  </nav>
+  <div class="sidebar-foot" id="sideFoot"></div>
+</aside>
+<main id="main">
+  <div id="view"></div>
+</main>
+<div id="modal" class="modal hidden"><div class="modal-box" id="modalBox"></div></div>
+<div id="toast" class="toast hidden"></div>
+<script src="/static/app.js"></script>
+<script src="/static/captions.js"></script>
+<script src="/static/pages.js"></script>
+</body>
+</html>
