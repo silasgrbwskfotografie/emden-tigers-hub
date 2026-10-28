@@ -1,5 +1,11 @@
 # Änderungen
 
+## 3.8 (28.10.2026)
+- Serverumzug unter Einstellungen: Komplett-Export und -Import mit allem (Vereinsdaten, Bilder, Videos, Konten, Gruppen, Rechte, Facebook-Verbindung, E-Mail-Versand, Protokoll)
+  - Umzugsdatei mit Passwort verschlüsselt, nur einmal herunterladbar, falsches Passwort oder beschädigte Datei werden vor dem Ersetzen erkannt
+  - Import ersetzt alles, vorher automatische Sicherung des bisherigen Stands
+- Uploads bis 2 GB über Caddy, `update.sh` startet Caddy neu, wenn sich das Caddyfile ändert
+
 ## 3.7 (28.10.2026)
 - Hub als App aufs Handy: zum Startbildschirm hinzufügen, auf dem Handy Menü als Schublade mit Leiste oben
 - Änderungsprotokoll (Verwaltung > Protokoll, nur Admins): wer hat wann was angelegt, geändert oder gelöscht, mit alten und neuen Werten

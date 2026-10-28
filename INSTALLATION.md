@@ -75,6 +75,17 @@ git checkout main            # später wieder auf den aktuellen Stand
 ```
 Auf dem Server bitte keine Dateien von Hand ändern. `update.sh` bricht sonst ab, damit nichts überschrieben wird.
 
+## Serverumzug (alles mitnehmen)
+
+Für den Umzug auf einen neuen Server gibt es unter **Einstellungen > Serverumzug** einen Komplett-Export. Er enthält **alles**: Vereinsdaten, Bilder und Videos, Konten mit Passwörtern, Gruppen und Rechte, Facebook-Verbindung, E-Mail-Versand und das Protokoll.
+
+1. Auf dem alten Server: ein Passwort (mind. 10 Zeichen) festlegen und **Komplett-Export herunterladen**. Die Datei `EmdenTigersHub-Umzug-....tigers` ist damit verschlüsselt und lässt sich nur einmal herunterladen.
+2. Den neuen Server wie oben unter „Server einrichten“ aufsetzen (mit einem vorläufigen Admin).
+3. Auf dem neuen Server anmelden, unter **Einstellungen > Serverumzug** die Datei auswählen, das Passwort eingeben und **Alles ersetzen und importieren**.
+4. Danach mit den Zugangsdaten des **alten** Servers anmelden. Der vorläufige Admin existiert nicht mehr.
+
+Vor dem Import legt der neue Server eine Sicherung seines bisherigen Stands an. Ohne das Passwort lässt sich die Datei nicht öffnen, also Passwort und Datei getrennt aufbewahren. Ändert sich die Adresse (Domain), danach unter Auto-Posting und E-Mail-Versand die öffentliche Adresse anpassen.
+
 ## Daten aus der lokalen Version übernehmen
 
 1. In der lokalen Version: **Einstellungen > Backup herunterladen (ZIP)**

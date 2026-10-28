@@ -1336,7 +1336,46 @@ App.pages.settings = async (view) => {
         <button class="btn" id="rs_btn">Backup einspielen</button><input type="file" id="rs_file" accept=".zip,.db" hidden></div>
       <div class="hint" style="margin-top:8px">Einspielen ersetzt alle Vereinsdaten durch das Backup (z. B. aus einer älteren Version). Vorher wird automatisch eine Sicherung angelegt. Konten, Gruppen und Rechte bleiben erhalten.</div>
       <div id="bk_list" class="small muted" style="margin-top:10px"></div></div>
+    <div class="card" style="margin-top:16px"><h2>Serverumzug: Komplett-Export und -Import</h2>
+      <p class="muted">Für den Umzug auf einen neuen Server. Die Datei enthält <b>alles</b>: Vereinsdaten, Bilder und Videos, Konten mit Passwörtern, Gruppen und Rechte,
+        Facebook-Verbindung, E-Mail-Versand und das Protokoll. Sie ist mit dem Passwort verschlüsselt, das du hier festlegst. Ohne dieses Passwort lässt sie sich nicht öffnen.</p>
+      <div class="grid g2">
+        <div><h3>1. Auf dem alten Server exportieren</h3>
+          <div class="form"><div class="field full"><label for="mg_pw1">Passwort für die Umzugsdatei (mind. 10 Zeichen)</label><input class="input" id="mg_pw1" type="password" autocomplete="new-password"></div>
+            <div class="field full"><label for="mg_pw2">Passwort wiederholen</label><input class="input" id="mg_pw2" type="password" autocomplete="new-password"></div></div>
+          <div class="btn-row" style="margin-top:10px"><button class="btn dark" id="mg_export">Komplett-Export herunterladen</button></div>
+          <div class="hint" style="margin-top:6px">Die Datei lässt sich einmal herunterladen. Bewahre das Passwort getrennt von der Datei auf.</div></div>
+        <div><h3>2. Auf dem neuen Server importieren</h3>
+          <div class="form"><div class="field full"><label for="mg_file">Umzugsdatei (.tigers)</label><input class="input" id="mg_file" type="file" accept=".tigers"></div>
+            <div class="field full"><label for="mg_pw3">Passwort der Umzugsdatei</label><input class="input" id="mg_pw3" type="password" autocomplete="off"></div></div>
+          <div class="btn-row" style="margin-top:10px"><button class="btn danger" id="mg_import">Alles ersetzen und importieren</button></div>
+          <div class="hint" style="margin-top:6px">Ersetzt den kompletten Stand dieses Hubs, auch Konten. Vorher wird automatisch eine Sicherung angelegt. Danach meldest du dich mit den Zugangsdaten des alten Servers an.</div></div>
+      </div><div id="mg_status" class="small" style="margin-top:10px"></div></div>
     <div class="card" style="margin-top:16px" id="mail_card"><h2>E-Mail-Versand für Benachrichtigungen</h2><div class="muted">Lade ...</div></div>`;
+  $('#mg_export').onclick = async () => {
+    const pw = $('#mg_pw1').value;
+    if (pw.length < 10) return alert('Das Passwort braucht mindestens 10 Zeichen.');
+    if (pw !== $('#mg_pw2').value) return alert('Die Passwörter stimmen nicht überein.');
+    $('#mg_status').textContent = 'Erstelle die Umzugsdatei, das kann bei vielen Bildern etwas dauern ...';
+    try {
+      const r = await api('migrate/export', 'POST', { password: pw });
+      $('#mg_status').textContent = `Fertig (${(r.size / 1048576).toFixed(1).replace('.', ',')} MB). Der Download startet.`;
+      $('#mg_pw1').value = $('#mg_pw2').value = '';
+      location.href = r.download;
+    } catch (e) { $('#mg_status').textContent = ''; alert(e.message); }
+  };
+  $('#mg_import').onclick = async () => {
+    const f = $('#mg_file').files[0], pw = $('#mg_pw3').value;
+    if (!f || !pw) return alert('Bitte Umzugsdatei auswählen und Passwort eingeben.');
+    if (!confirmBox(`„${f.name}“ importieren? Der komplette Stand dieses Hubs wird ersetzt, auch alle Konten.`)) return;
+    $('#mg_status').textContent = 'Lade hoch und prüfe die Datei ...';
+    const r = await fetch('/api/migrate/import', { method: 'POST', body: f, headers: { 'X-TMH': '1', 'Content-Type': 'application/octet-stream',
+      'X-Umzug-Passwort': btoa(String.fromCharCode(...new TextEncoder().encode(pw))) } });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { $('#mg_status').textContent = ''; return alert('Import fehlgeschlagen: ' + (d.error || r.status)); }
+    alert(`Umzug eingespielt: Stand vom ${fmtStamp(d.created)} (Version ${d.version}), ${d.users} Konten, ${d.media} Dateien.\nBitte jetzt mit den Zugangsdaten des alten Servers anmelden.`);
+    location.href = '/login';
+  };
   const mailCard = async () => {
     const c = await api('notify');
     $('#mail_card').innerHTML = `<h2>E-Mail-Versand für Benachrichtigungen</h2>

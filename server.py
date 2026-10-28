@@ -46,7 +46,7 @@ from urllib.parse import urlparse, unquote, parse_qs, urlencode
 import urllib.request
 import urllib.error
 
-VERSION = "3.7"
+VERSION = "3.8"
 APP_NAME = "Emden Tigers Hub"
 ENV = os.environ.get
 HOST = ENV("TMH_HOST", "127.0.0.1")
@@ -1378,6 +1378,146 @@ def restore_backup(raw: bytes):
 
 
 # ---------------------------------------------------------------------------
+# Serverumzug: Komplett-Export und -Import. Enthält ALLES (Konten, Gruppen, Rechte, Zugangsdaten,
+# Protokoll, Vereinsdaten, Bilder), nur Sitzungen nicht. Die Datei ist mit einem Passwort verschlüsselt,
+# nur mit der Standardbibliothek: Schlüssel per scrypt, Schlüsselstrom per SHAKE-256, Echtheit per
+# HMAC-SHA256 über die ganze Datei (erst prüfen, dann entschlüsseln).
+# Aufbau: MAGIC | Salz 16 | Nonce 16 | verschlüsseltes ZIP | HMAC 32
+# ---------------------------------------------------------------------------
+MIGRATE_MAGIC = b"TIGERSHUB-UMZUG-1\n"
+MIGRATE_MAX = 2 * 1024 ** 3        # 2 GB
+MIGRATE_CHUNK = 1024 * 1024
+
+
+def migrate_keys(password, salt):
+    k = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=2 ** 15, r=8, p=1, maxmem=128 * 1024 * 1024, dklen=64)
+    return k[:32], k[32:]
+
+
+def migrate_xor(data, key, nonce, index):
+    stream = hashlib.shake_256(key + nonce + index.to_bytes(8, "big")).digest(len(data))
+    return (int.from_bytes(data, "big") ^ int.from_bytes(stream, "big")).to_bytes(len(data), "big")
+
+
+def migrate_encrypt(src: Path, dst: Path, password):
+    salt, nonce = os.urandom(16), os.urandom(16)
+    enc_key, mac_key = migrate_keys(password, salt)
+    mac = hmac.new(mac_key, digestmod=hashlib.sha256)
+    with open(src, "rb") as fi, open(dst, "wb") as fo:
+        head = MIGRATE_MAGIC + salt + nonce
+        fo.write(head)
+        mac.update(head)
+        i = 0
+        while block := fi.read(MIGRATE_CHUNK):
+            c = migrate_xor(block, enc_key, nonce, i)
+            fo.write(c)
+            mac.update(c)
+            i += 1
+        fo.write(mac.digest())
+
+
+def migrate_decrypt(src: Path, dst: Path, password):
+    size = src.stat().st_size
+    hl = len(MIGRATE_MAGIC) + 32
+    with open(src, "rb") as fi:
+        head = fi.read(hl)
+        if size < hl + 32 or not head.startswith(MIGRATE_MAGIC):
+            raise ValueError("Das ist keine Umzugsdatei des Hubs.")
+        salt, nonce = head[len(MIGRATE_MAGIC):len(MIGRATE_MAGIC) + 16], head[len(MIGRATE_MAGIC) + 16:]
+        enc_key, mac_key = migrate_keys(password, salt)
+        mac = hmac.new(mac_key, head, hashlib.sha256)
+        left = size - hl - 32
+        while left > 0:
+            block = fi.read(min(MIGRATE_CHUNK, left))
+            mac.update(block)
+            left -= len(block)
+        if not hmac.compare_digest(mac.digest(), fi.read(32)):
+            raise ValueError("Das Passwort ist falsch oder die Datei ist beschädigt.")
+        fi.seek(hl)
+        left, i = size - hl - 32, 0
+        with open(dst, "wb") as fo:
+            while left > 0:
+                block = fi.read(min(MIGRATE_CHUNK, left))
+                fo.write(migrate_xor(block, enc_key, nonce, i))
+                left -= len(block)
+                i += 1
+
+
+def migrate_export(password) -> Path:
+    """Baut die verschlüsselte Umzugsdatei und liefert ihren Pfad (wird nach dem Herunterladen gelöscht)."""
+    stamp = secrets.token_hex(16)
+    tmpdb, tmpzip, out = DATA / f"_umzug_{stamp}.db", DATA / f"_umzug_{stamp}.zip", DATA / f"_umzug_{stamp}.tigers"
+    try:
+        db_snapshot(tmpdb)
+        c = sqlite3.connect(tmpdb)
+        try:
+            c.execute("DELETE FROM sessions")   # Anmeldungen ziehen nicht mit um
+            c.commit()
+            users = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        finally:
+            c.close()
+        files = [f for f in MEDIA.iterdir() if f.is_file()]
+        with zipfile.ZipFile(tmpzip, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("umzug.json", json.dumps({"app": APP_NAME, "version": VERSION, "created": datetime.now().isoformat(timespec="seconds"),
+                                                 "users": users, "media": len(files)}, ensure_ascii=False))
+            z.write(tmpdb, "data/tigers.db")
+            for f in files:   # Bilder und Videos sind schon komprimiert
+                z.write(f, f"data/media/{f.name}", compress_type=zipfile.ZIP_STORED)
+        migrate_encrypt(tmpzip, out, password)
+        return out
+    finally:
+        tmpdb.unlink(missing_ok=True)
+        tmpzip.unlink(missing_ok=True)
+
+
+def version_tuple(v):
+    return tuple(int(x) for x in re.findall(r"\d+", v or "0"))
+
+
+def migrate_import(src: Path, password):
+    """Ersetzt den kompletten Stand durch die Umzugsdatei. Vorher wird der eigene Stand gesichert."""
+    tmpzip, newdb = DATA / "_umzug_import.zip", DATA / "_umzug_import.db"
+    try:
+        migrate_decrypt(src, tmpzip, password)
+        try:
+            z = zipfile.ZipFile(tmpzip)
+        except zipfile.BadZipFile:
+            raise ValueError("Die Umzugsdatei ist beschädigt.")
+        with z:
+            meta = json.loads(z.read("umzug.json").decode("utf-8"))
+            if version_tuple(meta.get("version")) > version_tuple(VERSION):
+                raise ValueError(f"Die Datei stammt von Version {meta.get('version')}. Bitte diesen Hub zuerst auf mindestens diese Version bringen.")
+            newdb.write_bytes(z.read("data/tigers.db"))
+            test = sqlite3.connect(newdb)
+            try:
+                if test.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                    raise ValueError("Die Datenbank in der Umzugsdatei ist beschädigt.")
+            finally:
+                test.close()
+            db_snapshot(BACKUPS / f"vor-umzug-import-{datetime.now():%Y-%m-%d_%H%M%S}.db")
+            with SYNC_LOCK, DB_LOCK, SOCIAL_LOCK:
+                with db() as conn:
+                    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                for suffix in ("-wal", "-shm"):
+                    Path(str(DB_PATH) + suffix).unlink(missing_ok=True)
+                os.replace(newdb, DB_PATH)
+                init_db()
+            count = 0
+            for info in z.infolist():
+                n = info.filename
+                base = n.rsplit("/", 1)[-1]
+                if n.startswith("data/media/") and re.fullmatch(r"[A-Za-z0-9._-]{1,120}", base):
+                    with z.open(info) as fi, open(MEDIA / base, "wb") as fo:
+                        shutil.copyfileobj(fi, fo, MIGRATE_CHUNK)
+                    count += 1
+        SOCIAL_CACHE.clear()
+        return {"ok": True, "version": meta.get("version"), "created": meta.get("created"), "users": meta.get("users"), "media": count}
+    finally:
+        tmpzip.unlink(missing_ok=True)
+        newdb.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
 # Google-Tabelle "Social Media Spieler" einlesen
 # Die Tabelle muss für "Jeder mit dem Link" freigegeben sein.
 # ---------------------------------------------------------------------------
@@ -1722,6 +1862,31 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Disposition", f'attachment; filename="{download_name}"')
         self.end_headers()
         self.wfile.write(data)
+
+    def send_stream(self, path: Path, download_name):
+        """Große Datei in Stücken senden (nicht komplett in den Speicher laden)."""
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(path.stat().st_size))
+        self.send_header("Content-Disposition", f'attachment; filename="{download_name}"')
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        with open(path, "rb") as f:
+            shutil.copyfileobj(f, self.wfile, MIGRATE_CHUNK)
+
+    def save_body(self, target: Path, limit):
+        """Großen Upload direkt in eine Datei schreiben."""
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > limit:
+            raise PayloadTooLarge()
+        left = length
+        with open(target, "wb") as f:
+            while left > 0:
+                block = self.rfile.read(min(MIGRATE_CHUNK, left))
+                if not block:
+                    break
+                f.write(block)
+                left -= len(block)
 
     def read_body(self, limit=MAX_BODY):
         length = int(self.headers.get("Content-Length") or 0)
@@ -2134,6 +2299,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.api_social(method, p[1:], user, can)
             if name == "notify":
                 return self.api_notify(method, p[1:], user)
+            if name == "migrate":
+                if not admin:
+                    return self.deny("Nur für Admins.")
+                return self.api_migrate(method, p[1:], user)
 
             if name == "apparel" and method == "POST" and len(p) == 3 and p[2] == "book":
                 # Sammelbuchung: alle bezahlten, noch nicht gebuchten Bestellungen als eine Einnahme
@@ -2187,6 +2356,45 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa
             print("Fehler:", repr(e))
             return self.send_json({"error": str(e)}, 500)
+
+    # -- Serverumzug (nur Admins) ------------------------------------------
+    def api_migrate(self, method, p, user):
+        sub = p[0] if p else ""
+        if method == "POST" and sub == "export":
+            pw = self.read_json().get("password") or ""
+            if len(pw) < 10:
+                return self.send_json({"error": "Das Passwort für die Umzugsdatei braucht mindestens 10 Zeichen."}, 400)
+            with db() as conn:   # vorher protokollieren, damit der Eintrag mit umzieht
+                audit(conn, user, "Komplett-Export erstellt", "backup", None, "Serverumzug")
+            path = migrate_export(pw)
+            return self.send_json({"download": f"/api/migrate/download/{path.stem[len('_umzug_'):]}", "size": path.stat().st_size})
+        if method == "GET" and sub == "download" and len(p) == 2 and re.fullmatch(r"[0-9a-f]{32}", p[1]):
+            path = DATA / f"_umzug_{p[1]}.tigers"
+            if not path.is_file():
+                return self.send_json({"error": "Die Umzugsdatei ist nicht mehr da. Bitte neu erstellen."}, 404)
+            try:
+                return self.send_stream(path, f"EmdenTigersHub-Umzug-{datetime.now():%Y-%m-%d}.tigers")
+            finally:
+                path.unlink(missing_ok=True)   # nur einmal herunterladbar
+        if method == "POST" and sub == "import":
+            try:
+                pw = base64.b64decode(self.headers.get("X-Umzug-Passwort") or "").decode("utf-8")
+            except ValueError:
+                pw = ""
+            if not pw:
+                return self.send_json({"error": "Bitte das Passwort der Umzugsdatei angeben."}, 400)
+            upload = DATA / f"_umzug_upload_{secrets.token_hex(8)}.tigers"
+            try:
+                self.save_body(upload, MIGRATE_MAX)
+                res = migrate_import(upload, pw)
+            except ValueError as e:
+                return self.send_json({"error": str(e)}, 400)
+            finally:
+                upload.unlink(missing_ok=True)
+            with db() as conn:
+                audit(conn, user, "Komplett-Import eingespielt", "backup", None, "Serverumzug", res)
+            return self.send_json(res)
+        return self.send_json({"error": "Unbekannter Pfad"}, 404)
 
     # -- E-Mail-Versand (nur Admins) ---------------------------------------
     def api_notify(self, method, p, user):
@@ -2748,6 +2956,9 @@ def cleanup_loop():
                 conn.execute("DELETE FROM sessions WHERE expires < ?", (time.time(),))
                 conn.execute("DELETE FROM audit_log WHERE time < ?",
                              ((datetime.now() - timedelta(days=AUDIT_KEEP_DAYS)).isoformat(timespec="seconds"),))
+            for f in DATA.glob("_umzug_*"):   # nicht abgeholte Umzugsdateien nach einer Stunde löschen
+                if time.time() - f.stat().st_mtime > 3600:
+                    f.unlink(missing_ok=True)
         except Exception:  # noqa
             pass
         threading.Event().wait(6 * 3600)

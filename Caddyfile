@@ -6,9 +6,9 @@
 {$DOMAIN} {
 	encode gzip
 
-	# Uploads und Backups bis 300 MB
+	# Uploads und Backups, Umzugsdatei bis 2 GB (die Grenzen pro Anfrage prüft der Hub selbst)
 	request_body {
-		max_size 300MB
+		max_size 2GB
 	}
 
 	header {

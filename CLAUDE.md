@@ -36,6 +36,8 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
 - Alles außer `/login`, `/setup`, `/invite`, `/healthz`, `/bestellen`, `/teilen`, `/manifest.webmanifest`, `/sw.js`, `style.css`, `logo.png`, `icon.png`, `icon-192.png`, `icon-512.png` braucht eine Sitzung.
 - `sw.js` speichert bewusst nichts zwischen (keine Vereinsdaten offline auf dem Handy).
 - Änderungsprotokoll `audit_log` (nicht in `TABLES`, nur `/api/admin/log`, nicht im Backup-Download). `api_table` schreibt bei jedem Anlegen, Ändern, Löschen mit; neue Sonderaktionen mit `audit(...)` ergänzen.
+- Serverumzug (`/api/migrate`, nur Admins): Komplett-Export inkl. Konten, `secrets` und Protokoll, ohne Sitzungen, verschlüsselt mit Passwort
+  (scrypt, SHAKE-256-Schlüsselstrom, HMAC-SHA256, erst prüfen, dann entschlüsseln). Import ersetzt alles. Neue Tabellen landen automatisch mit drin.
 - E-Mail: SMTP-Zugang in `secrets`, Passwort nie über die API. `notify(kind, ...)` schickt nur an Abonnenten mit passendem Leserecht (`NOTIFY_KINDS`), jede Mail einzeln.
 - `/teilen/<sig>/<datei>`: einzelne Bilder aus `data/media` für Instagram (Meta holt Bilder selbst ab). Nur mit HMAC-Signatur (`share_sig`, Schlüssel `share_key` in `secrets`), nur Bildendungen (`SHARE_EXT`).
 - Auto-Posting: Seiten-Token und Schlüssel in der Tabelle `secrets` (nicht in `TABLES`, nicht über die API lesbar, aus dem Backup-Download entfernt, beim Restore behalten). Verbindung einrichten nur Admins (`/api/social/connection`).

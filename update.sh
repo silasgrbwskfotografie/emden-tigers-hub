@@ -48,6 +48,11 @@ fi
 # 3. Neu bauen und starten
 docker compose up -d --build
 docker image prune -f >/dev/null 2>&1 || true
+# Geänderte Caddy-Konfiguration übernehmen (die Datei ist eingebunden, Caddy liest sie nur beim Start)
+if [ "$OLD" != "$NEW" ] && git diff --name-only "$OLD" "$NEW" | grep -qx Caddyfile; then
+  echo "-> Caddyfile geändert, Caddy wird neu gestartet"
+  docker compose restart caddy
+fi
 
 # 4. Kurz prüfen, ob der Hub antwortet
 echo -n "-> Warte auf den Hub "
