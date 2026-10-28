@@ -46,7 +46,7 @@ from urllib.parse import urlparse, unquote, parse_qs
 import urllib.request
 import urllib.error
 
-VERSION = "3.0"
+VERSION = "3.0.1"
 APP_NAME = "Emden Tigers Hub"
 ENV = os.environ.get
 HOST = ENV("TMH_HOST", "127.0.0.1")

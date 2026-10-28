@@ -1,5 +1,8 @@
 # Änderungen
 
+## 3.0.1 (28.10.2026)
+- Caddy: HTTPS funktioniert auch beim Aufruf über eine IP-Adresse (z. B. Test-VM im lokalen Netz)
+
 ## 3.0 (28.10.2026)
 - Neuer Name: Emden Tigers Hub
 - Konten, Gruppen und Rechte pro Bereich (Medien, Verein, Mitglieder, Finanzen), Ausnahmen pro Person
