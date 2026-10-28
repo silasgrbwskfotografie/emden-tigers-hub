@@ -4,6 +4,11 @@
 const POSITIONS = ['QB', 'RB', 'FB', 'WR', 'TE', 'OL', 'DL', 'DE', 'LB', 'CB', 'S', 'K', 'P', 'LS', 'KR/PR', 'Athlete'];
 const POST_TYPES = ['Gameday', 'Ergebnis', 'Spielervorstellung', 'Sponsor', 'Spielplan', 'Training & Behind the Scenes', 'Verein & Community', 'Saisonabschluss', 'Sonstiges'];
 const POST_STATUS = ['Idee', 'In Arbeit', 'Geplant', 'Gepostet'];
+const SOCIAL_TARGETS = ['Facebook', 'Instagram', 'Facebook + Instagram'];
+// Zustand beim automatischen Posten (setzt nur der Server): [Text, Badge-Klasse]
+const PUBLISH_STATE = { '': ['Auto: wartet', 'red'], 'läuft': ['Auto: läuft', 'warn'], gepostet: ['Auto: gepostet', 'ok'],
+  teilweise: ['Auto: teilweise', 'warn'], fehler: ['Auto: Fehler', 'warn'], verpasst: ['Auto: verpasst', 'warn'] };
+const publishBadge = p => Number(p.auto_publish) || p.publish_state ? `<span class="badge ${PUBLISH_STATE[p.publish_state || '']?.[1] || ''}" title="${esc(p.publish_log || '')}">${PUBLISH_STATE[p.publish_state || '']?.[0] || esc(p.publish_state)}</span>` : '';
 const SPONSOR_PACKAGES = ['Hauptsponsor', 'Trikotsponsor', 'Spieltagssponsor', 'Supporter Karte', 'Medienturm', 'Partner', 'Förderer'];
 
 const oppLabel = o => o.name || '';
@@ -98,6 +103,8 @@ const F = {
     { key: 'sponsor_id', label: 'Sponsor', type: 'ref', ref: { table: 'sponsors', label: sponsorLabel } },
     { key: 'player_id', label: 'Spieler / Coach', type: 'ref', ref: { table: 'players', label: playerLabel } },
     { key: 'posted_url', label: 'Link zum Post' },
+    { key: 'auto_publish', label: 'Automatisch posten (Freigabe)', type: 'check', hint: 'Geht zu Datum und Uhrzeit oben automatisch raus. Möglich: Feed-Post und Story mit Bild.' },
+    { key: 'targets', label: 'Posten auf', type: 'select', options: SOCIAL_TARGETS, show: v => Number(v.auto_publish) },
     { key: 'notes', label: 'Notizen', type: 'textarea', rows: 2 },
   ],
 };
@@ -148,6 +155,8 @@ App.pages.dashboard = async (view) => {
   if (vw && lg && (lg.score_us === null || lg.score_us === '')) notes.push(`Ergebnis vom ${fmtDate(lg.date)} fehlt noch. <button class="vw btn sm" onclick="editGame(${lg.id})">Eintragen</button>`);
   if (mw && lg && !App.cache.posts.find(p => p.game_id == lg.id && p.type === 'Ergebnis')) notes.push(`Kein Endstand-Post für das Spiel am ${fmtDate(lg.date)}. <button class="pp btn sm" onclick="planPost({type:'Ergebnis',game_id:${lg.id}})">Planen</button>`);
   if (vw && dash.counts.no_consent) notes.push(`${dash.counts.no_consent} aktive Personen ohne hinterlegte Foto-Einwilligung. <a class="btn sm" href="#/players">Ansehen</a>`);
+  if (medien) App.cache.posts.filter(p => ['fehler', 'teilweise', 'verpasst'].includes(p.publish_state) && (p.date || '') >= addDays(todayStr(), -7))
+    .forEach(p => notes.push(`Automatisch posten hat bei „${esc(p.title || p.type || 'Post')}“ nicht geklappt: ${esc(p.publish_log || p.publish_state)} <a class="btn sm" href="#/autopost">Auto-Posting</a>`));
   if (medien) dash.overdue_posts.forEach(p => notes.push(`Post „${esc(p.title || p.type)}“ war für ${fmtDate(p.date)} geplant und ist noch nicht als gepostet markiert. <a class="btn sm" href="#/posts">Postplan</a>`));
   if (mw) App.cache.sponsors.filter(sp => Number(sp.active) && Number(sp.posts_agreed)).forEach(sp => {
     const done = App.cache.posts.filter(p => p.sponsor_id == sp.id && p.status === 'Gepostet').length;
@@ -221,7 +230,7 @@ App.pages.posts = async (view) => {
           ${p.image ? `<img src="${esc(p.image)}">` : '<img>'}
           ${dateBox(p.date)}
           <div style="min-width:0"><div class="t">${esc(p.title || p.type || 'Post')}</div><div class="c">${esc((p.caption || '').split('\n')[0])}</div>
-            <div class="small muted">${esc(p.type || '')} | ${esc(p.format || 'Feed')}${p.time ? ' | ' + p.time + ' Uhr' : ''}</div></div>
+            <div class="small muted">${esc(p.type || '')} | ${esc(p.format || 'Feed')}${p.time ? ' | ' + p.time + ' Uhr' : ''} ${publishBadge(p)}</div></div>
           <select class="input" data-st="${p.id}" style="width:auto">${POST_STATUS.map(s => `<option ${s === (p.status || 'Idee') ? 'selected' : ''}>${s}</option>`).join('')}</select>
           <div class="btn-row">
             <button class="btn sm" data-copy="${p.id}" title="Caption kopieren">Caption</button>
@@ -236,6 +245,112 @@ App.pages.posts = async (view) => {
     $('#p_new').onclick = () => planPost();
   };
   draw();
+};
+
+/* ====================================================================== */
+/* Auto-Posting: Verbindung zu Facebook/Instagram, Warteschlange, wiederkehrende Storys */
+const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7];   // ISO: 1 = Montag
+const ruleDays = r => (r.weekdays || '').split(',').filter(Boolean).map(d => WD_S[Number(d) % 7]).join(', ');
+const postWhen = p => `${p.date || ''} ${p.time || '00:00'}`;
+
+F.story_rules = () => [
+  { key: 'name', label: 'Bezeichnung', placeholder: 'z. B. Training heute', full: true },
+  ...WEEKDAYS.map(n => ({ key: 'wd' + n, label: WD[n % 7], type: 'check' })),
+  { key: 'time', label: 'Uhrzeit', type: 'time' },
+  { key: 'targets', label: 'Posten auf', type: 'select', options: SOCIAL_TARGETS },
+  { key: 'image', label: 'Story-Bild aus Canva', type: 'image', full: true, hint: 'Hochformat 1080 x 1920. Für Instagram am besten als JPG exportieren.' },
+  { key: 'active', label: 'Aktiv', type: 'check', default: 1 },
+  { key: 'valid_from', label: 'Gültig ab', type: 'date' },
+  { key: 'valid_until', label: 'Gültig bis', type: 'date', hint: 'z. B. Saisonende oder Beginn der Winterpause' },
+  { key: 'notes', label: 'Notizen', type: 'textarea', rows: 2 },
+];
+
+function editStoryRule(rec) {
+  const r = { ...rec }, days = (r.weekdays || '').split(',');
+  WEEKDAYS.forEach(n => { r['wd' + n] = days.includes(String(n)) ? 1 : 0; });
+  return editRecord('story_rules', F.story_rules(), r, {
+    newTitle: 'Neue Story-Regel', editTitle: 'Story-Regel',
+    beforeSave: v => { v.weekdays = WEEKDAYS.filter(n => Number(v['wd' + n])).join(','); WEEKDAYS.forEach(n => delete v['wd' + n]); },
+  });
+}
+
+App.pages.autopost = async (view) => {
+  const [social] = await Promise.all([api('social'), load('posts', true), load('story_rules', true)]);
+  const now = `${todayStr()} ${new Date().toTimeString().slice(0, 5)}`;
+  const queue = App.cache.posts.filter(p => Number(p.auto_publish) && !p.publish_state).sort((a, b) => postWhen(a).localeCompare(postWhen(b)));
+  const results = App.cache.posts.filter(p => p.publish_state).sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || '') || b.id - a.id).slice(0, 15);
+  const rules = [...App.cache.story_rules].sort((a, b) => Number(b.active) - Number(a.active) || (a.time || '').localeCompare(b.time || ''));
+  const steps = `<ol class="small" style="margin:8px 0 0 18px;padding:0">
+    <li>Auf <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener">developers.facebook.com</a> eine App vom Typ „Business“ anlegen. Du musst Admin der Facebook-Seite sein.</li>
+    <li>Im <a href="https://developers.facebook.com/tools/explorer" target="_blank" rel="noopener">Graph API Explorer</a> die App wählen und diese Berechtigungen anhaken: pages_show_list, pages_read_engagement, pages_manage_posts, für Instagram zusätzlich instagram_basic und instagram_content_publish. Dann „Generate Access Token“.</li>
+    <li>Das Token im <a href="https://developers.facebook.com/tools/debug/accesstoken" target="_blank" rel="noopener">Access Token Debugger</a> verlängern („Extend Access Token“).</li>
+    <li>Mit dem verlängerten Token im Explorer <code>me/accounts</code> abrufen und dort das <b>access_token eurer Seite</b> kopieren. Dieses Seiten-Token läuft nicht ab.</li>
+    <li>Hier einfügen und „Verbinden“. Der Hub erkennt Seite und verknüpftes Instagram-Konto selbst.</li></ol>
+    <div class="small muted" style="margin-top:6px">Instagram geht nur mit einem Business- oder Creator-Konto, das mit der Facebook-Seite verknüpft ist, und nur auf dem Server mit Domain: Instagram holt die Bilder selbst über die öffentliche Adresse ab.</div>`;
+
+  view.innerHTML = `
+    <div class="page-head"><h1>Auto-Posting<small>${social.connected ? `verbunden mit ${esc(social.page)}${social.instagram ? ' und Instagram @' + esc(social.instagram) : ', ohne Instagram'}` : 'noch nicht verbunden'}</small></h1>
+      <div class="btn-row"><a class="btn" href="#/posts">Zum Postplan</a><button class="pp btn primary" id="ao_rule">+ Story-Regel</button></div></div>
+    <div class="card" style="margin-bottom:16px"><h2>Verbindung</h2>
+      ${social.connected ? `<div class="check-row"><span class="dot ok"></span><span style="flex:1">Facebook-Seite <b>${esc(social.page)}</b></span></div>
+        <div class="check-row"><span class="dot ${social.instagram ? 'ok' : ''}"></span><span style="flex:1">${social.instagram ? `Instagram <b>@${esc(social.instagram)}</b>` : 'Kein Instagram-Konto mit der Seite verknüpft'}</span></div>
+        <div class="check-row"><span class="dot ${(social.public_url || '').startsWith('https://') ? 'ok' : ''}"></span><span style="flex:1">Öffentliche Adresse für Instagram: ${social.public_url ? esc(social.public_url) : '<span class="muted">nicht eingetragen</span>'}</span></div>`
+        : '<div class="muted">Es ist noch keine Facebook-Seite verbunden. Bis dahin postet der Hub nichts.</div>'}
+      ${social.is_admin ? `<details style="margin-top:12px" ${social.connected ? '' : 'open'}><summary><b>${social.connected ? 'Verbindung ändern' : 'Verbindung einrichten'}</b></summary>${steps}
+        <div class="form" style="margin-top:12px">
+          <div class="field full"><label for="ao_token">Seiten-Token</label><input class="input" id="ao_token" type="password" autocomplete="off" placeholder="${social.connected ? 'hinterlegt, nur zum Ändern neu eintragen' : 'EAA...'}"></div>
+          <div class="field full"><label for="ao_url">Öffentliche Adresse des Hubs (für Instagram)</label><input class="input" id="ao_url" value="${esc(social.public_url || '')}" placeholder="z. B. https://hub.emdentigers.de"></div></div>
+        <div class="btn-row" style="margin-top:10px"><button class="btn primary" id="ao_connect">Verbinden und prüfen</button>${social.connected ? '<button class="btn ghost" id="ao_disconnect">Verbindung trennen</button>' : ''}</div></details>`
+        : social.connected ? '' : '<div class="small muted" style="margin-top:6px">Die Verbindung richtet ein Admin ein.</div>'}
+    </div>
+    <div class="card" style="margin-bottom:16px"><div class="mag-sec-head"><h2>Wiederkehrende Storys</h2></div>
+      ${rules.length ? `<div class="table-wrap" style="border:0"><table><thead><tr><th></th><th>Bezeichnung</th><th>Tage</th><th>Uhrzeit</th><th>Ziel</th><th>Zuletzt</th><th></th></tr></thead><tbody>
+        ${rules.map(r => `<tr style="${Number(r.active) ? '' : 'opacity:.5'}"><td>${r.image ? `<img class="thumb" src="${esc(r.image)}">` : '<div class="thumb"></div>'}</td>
+          <td><b>${esc(r.name || 'Story')}</b>${Number(r.active) ? '' : ' <span class="badge">pausiert</span>'}${r.valid_until ? `<div class="muted small">bis ${fmtDate(r.valid_until)}</div>` : ''}${r.image ? '' : '<div class="warnline">Bild fehlt</div>'}</td>
+          <td>${esc(ruleDays(r)) || '<span class="warnline">kein Tag</span>'}</td><td>${esc(r.time || '')}</td><td>${esc(r.targets || 'Facebook')}</td>
+          <td class="small">${esc(r.last_result || 'noch nie')}</td>
+          <td class="actions"><button class="pp btn sm" data-test="${r.id}">Jetzt testen</button> <button class="btn sm ghost keep" data-rule="${r.id}">${can('medien', 2) ? 'Bearbeiten' : 'Ansehen'}</button></td></tr>`).join('')}
+        </tbody></table></div>` : '<div class="muted">Noch keine Regel. Beispiel: „Training heute“ jeden Dienstag und Donnerstag um 12:00 Uhr mit eurem Canva-Story-Bild.</div>'}
+      <div class="small muted" style="margin-top:8px">Läuft der Hub zur geplanten Uhrzeit nicht, holt er die Story bis zu 3 Stunden später nach, danach fällt sie für den Tag aus.</div></div>
+    <div class="grid g2">
+      <div class="card"><h2>Warteschlange</h2>
+        ${queue.length ? `<div class="list">${queue.map(p => `<div class="list-item">${dateBox(p.date)}<div class="grow"><b>${esc(p.title || p.type || 'Post')}</b>
+          <div class="muted small">${p.time ? p.time + ' Uhr | ' : ''}${esc(p.format || 'Feed')} | ${esc(p.targets || 'Facebook')}${postWhen(p) <= now ? ' | <b>jetzt fällig</b>' : ''}</div>
+          ${!p.image && (p.format === 'Story' || /instagram/i.test(p.targets)) ? '<div class="warnline">Bild fehlt</div>' : ''}</div>
+          <button class="btn sm ghost keep" data-post="${p.id}">Ansehen</button></div>`).join('')}</div>`
+          : '<div class="muted">Keine freigegebenen Posts. Im Postplan beim Post „Automatisch posten“ anhaken.</div>'}</div>
+      <div class="card"><h2>Zuletzt</h2>
+        ${results.length ? `<div class="list">${results.map(p => `<div class="list-item"><div class="grow"><b>${esc(p.title || p.type || 'Post')}</b> ${publishBadge(p)}
+          <div class="muted small">${esc(p.publish_log || '')}</div></div>
+          <div class="btn-row">${['fehler', 'teilweise', 'verpasst'].includes(p.publish_state) ? `<button class="pp btn sm" data-now="${p.id}">Jetzt posten</button><button class="pp btn sm ghost" data-reset="${p.id}">Neu einplanen</button>` : ''}
+          <button class="btn sm ghost keep" data-post="${p.id}">Ansehen</button></div></div>`).join('')}</div>` : '<div class="muted">Noch nichts automatisch gepostet.</div>'}</div>
+    </div>`;
+
+  const run = async (body, question) => {
+    if (!confirmBox(question)) return;
+    toast('Wird gepostet ...');
+    try { const r = await api('social/publish', 'POST', body); alert(r.log); } catch (e) { alert(e.message); }
+    route();
+  };
+  $('#ao_rule').onclick = async () => {
+    const days = WD.map((d, i) => (App.settings.training_text || '').includes(d) ? (i || 7) : 0).filter(Boolean);
+    if (await editStoryRule({ name: 'Training heute', time: '12:00', targets: 'Facebook', active: 1, weekdays: days.join(',') })) route();
+  };
+  $$('[data-rule]', view).forEach(b => b.onclick = async () => { if (await editStoryRule(byId(rules, b.dataset.rule))) route(); });
+  $$('[data-test]', view).forEach(b => b.onclick = () => run({ rule_id: Number(b.dataset.test) }, 'Diese Story jetzt sofort posten? Sie erscheint wirklich auf der Seite.'));
+  $$('[data-now]', view).forEach(b => b.onclick = () => run({ post_id: Number(b.dataset.now), again: true }, 'Diesen Post jetzt sofort posten?'));
+  $$('[data-reset]', view).forEach(b => b.onclick = async () => { await api('social/reset', 'POST', { post_id: Number(b.dataset.reset) }); toast('Wieder eingeplant'); route(); });
+  $$('[data-post]', view).forEach(b => b.onclick = () => planPost(byId(App.cache.posts, b.dataset.post)));
+  if ($('#ao_connect')) $('#ao_connect').onclick = async () => {
+    try {
+      const r = await api('social/connection', 'PUT', { token: $('#ao_token').value.trim(), public_url: $('#ao_url').value.trim() });
+      toast(`Verbunden mit ${r.page}${r.instagram ? ' und @' + r.instagram : ''}`); route();
+    } catch (e) { alert(e.message); }
+  };
+  if ($('#ao_disconnect')) $('#ao_disconnect').onclick = async () => {
+    if (!confirmBox('Verbindung trennen? Danach postet der Hub nichts mehr automatisch.')) return;
+    await api('social/connection', 'DELETE'); toast('Verbindung getrennt'); route();
+  };
 };
 
 /* ====================================================================== */
@@ -1122,7 +1237,8 @@ App.pages.social = async (view, args) => {
 /* ---------- Post planen (Grafik kommt aus Canva) ---------- */
 async function planPost(rec = {}) {
   await loadAll('games', 'opponents', 'sponsors', 'players', 'posts');
-  const r = { status: 'Idee', format: 'Feed', time: '18:00', ...rec };
+  const social = await api('social').catch(() => ({}));
+  const r = { status: 'Idee', format: 'Feed', time: '18:00', targets: 'Facebook', ...rec };
   if (!rec.id) {
     const g = byId(App.cache.games, r.game_id);
     if (!r.date) {
@@ -1155,6 +1271,15 @@ async function planPost(rec = {}) {
         if (/\[[^\]]+\]/.test(v)) w.push('Noch Platzhalter in eckigen Klammern drin.');
         const pl = byId(App.cache.players, $('#f_player_id', box).value);
         if (pl && !Number(pl.consent)) w.push('Für diese Person ist keine Foto-Einwilligung hinterlegt.');
+        const f = readForm(box, F.posts);
+        if (Number(f.auto_publish) && !['gepostet', 'läuft'].includes(rec.publish_state)) {
+          if (!social.connected) w.push('Automatisch posten: Es ist noch keine Facebook-Seite verbunden (Auto-Posting).');
+          if (!f.date || !f.time) w.push('Automatisch posten: Datum und Uhrzeit fehlen.');
+          else if (new Date(`${f.date}T${f.time}`) < new Date(Date.now() - 24 * 3600 * 1000)) w.push('Automatisch posten: Der Zeitpunkt liegt mehr als 24 Stunden zurück, der Post wird nicht mehr automatisch gepostet.');
+          else if (new Date(`${f.date}T${f.time}`) < new Date()) w.push('Automatisch posten: Der Zeitpunkt liegt in der Vergangenheit, der Post geht nach dem Speichern innerhalb einer Minute raus.');
+          if (['Reel', 'Karussell'].includes(f.format)) w.push(`Automatisch posten: ${f.format} wird noch nicht unterstützt, nur Feed und Story.`);
+          if (!f.image && (f.format === 'Story' || /instagram/i.test(f.targets))) w.push('Automatisch posten: Für Storys und Instagram wird ein Bild gebraucht.');
+          if (/instagram/i.test(f.targets) && social.connected && !social.instagram) w.push('Automatisch posten: Mit der Facebook-Seite ist kein Instagram-Konto verknüpft.');        }
         $('#pp_warn', box).innerHTML = w.map(x => `<div class="warnline">⚠ ${x}</div>`).join('');
         const fx = $('#pp_fix', box); if (fx) fx.onclick = () => { cap.value = noDashes(cap.value); check(); };
       };
@@ -1163,6 +1288,10 @@ async function planPost(rec = {}) {
         cap.value = suggestCaption(readForm(box, F.posts)); check();
       };
       $('#pp_copy', box).onclick = () => copyText(cap.value);
+      if (rec.publish_state || rec.publish_log) {
+        $('[data-fkey="auto_publish"]', box).insertAdjacentHTML('beforebegin', `<div class="field full"><label>Automatisch posten</label>
+          <div>${publishBadge(rec)} <span class="small muted">${esc(rec.publish_log || '')}</span></div></div>`);
+      }
       cap.addEventListener('input', check); box.addEventListener('change', check); check();
     },
   });

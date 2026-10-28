@@ -32,7 +32,7 @@ async function load(table, force = false) {
 function invalidate(...tables) { tables.forEach(t => delete App.cache[t]); }
 async function loadAll(...tables) { return Promise.all(tables.map(t => load(t))); }
 
-const APP_VERSION = '3.4';
+const APP_VERSION = '3.5';
 async function checkVersion() {
   try {
     const info = await api('');
@@ -48,7 +48,7 @@ async function checkVersion() {
 // Teamkleidung dürfen Verein, Finanzen und Medien verwalten (wie TABLE_AREAS_ANY im Server)
 const APPAREL_AREAS = 'verein|finanzen|medien';
 const PAGE_AREA = {
-  posts: 'medien', social: 'medien', media: 'medien', team: 'medien', magazine: 'medien',
+  posts: 'medien', autopost: 'medien', social: 'medien', media: 'medien', team: 'medien', magazine: 'medien',
   games: 'verein', players: 'verein', opponents: 'verein', sponsors: 'verein', apparel: APPAREL_AREAS,
   members: 'mitglieder', finance: 'finanzen', cards: 'finanzen',
   accounts: 'admin', groups: 'admin', settings: 'admin',

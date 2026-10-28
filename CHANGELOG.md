@@ -1,5 +1,13 @@
 # Änderungen
 
+## 3.5 (28.10.2026)
+- Neu im Bereich Medien: Auto-Posting auf Facebook und Instagram
+  - Posts im Postplan mit „Automatisch posten“ freigeben: Feed-Post und Story gehen zu Datum und Uhrzeit raus (Facebook, Instagram oder beides)
+  - Wiederkehrende Storys, z. B. Trainingszeiten: Wochentage, Uhrzeit, eigenes Canva-Bild, Gültigkeitszeitraum, „Jetzt testen“
+  - Warteschlange, Ergebnisse mit Fehlermeldung, „Jetzt posten“ und „Neu einplanen“, Hinweis in der Übersicht bei Fehlern
+  - Verbindung über ein Seiten-Token (nur Admins), Seite und Instagram-Konto werden automatisch erkannt
+  - Nie doppelt: verpasste Posts werden nach 24 Stunden, Storys nach 3 Stunden nicht mehr nachgeholt
+
 ## 3.4 (28.10.2026)
 - Neue Seite Teamkleidung (verwalten mit Bearbeiten-Recht in Verein, Finanzen oder Medien)
   - Klamotte anlegen mit Bild, Beschreibung, Preis und Bestellschluss

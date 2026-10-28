@@ -42,11 +42,11 @@ import zipfile
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, unquote, parse_qs
+from urllib.parse import urlparse, unquote, parse_qs, urlencode
 import urllib.request
 import urllib.error
 
-VERSION = "3.4"
+VERSION = "3.5"
 APP_NAME = "Emden Tigers Hub"
 ENV = os.environ.get
 HOST = ENV("TMH_HOST", "127.0.0.1")
@@ -170,6 +170,24 @@ TABLES = {
         "sponsor_id": "INTEGER",
         "player_id": "INTEGER",
         "posted_url": "TEXT",
+        "notes": "TEXT",
+        "auto_publish": "INTEGER DEFAULT 0",       # Freigabe: zum geplanten Zeitpunkt automatisch posten
+        "targets": "TEXT DEFAULT 'Facebook'",      # Facebook / Instagram / Facebook + Instagram
+        "publish_state": "TEXT",                   # nur Server: läuft / gepostet / teilweise / fehler / verpasst
+        "publish_log": "TEXT",                     # nur Server
+        "published_at": "TEXT",                    # nur Server
+    },
+    "story_rules": {                            # Wiederkehrende Storys, z. B. Trainingszeiten
+        "name": "TEXT",
+        "weekdays": "TEXT",                        # ISO-Wochentage, z. B. 2,4 (1 = Montag)
+        "time": "TEXT",                            # HH:MM
+        "image": "TEXT",
+        "targets": "TEXT DEFAULT 'Facebook'",
+        "active": "INTEGER DEFAULT 1",
+        "valid_from": "TEXT",
+        "valid_until": "TEXT",
+        "last_run": "TEXT",                        # nur Server: Datum der letzten Ausführung
+        "last_result": "TEXT",                     # nur Server
         "notes": "TEXT",
     },
     "sheet_players": {                          # Stand der Google-Tabelle "Social Media Spieler"
@@ -329,7 +347,7 @@ DB_LOCK = threading.RLock()   # exklusiv beim Einspielen eines Backups
 AREAS = {"medien": "Medien", "verein": "Verein", "mitglieder": "Mitglieder", "finanzen": "Finanzen"}
 TABLE_AREA = {
     "posts": "medien", "media": "medien", "sheet_players": "medien", "sheet_log": "medien",
-    "media_team": "medien", "assignments": "medien", "magazines": "medien", "magazine_pages": "medien",
+    "media_team": "medien", "assignments": "medien", "magazines": "medien", "magazine_pages": "medien", "story_rules": "medien",
     "games": "verein", "opponents": "verein", "players": "verein", "sponsors": "verein",
     "members": "mitglieder",
     "supporter_cards": "finanzen", "transactions": "finanzen",
@@ -346,6 +364,8 @@ SHARED_READ = {"games", "opponents", "players", "sponsors", "media"}
 FINANCE_FIELDS = {"sponsors": ("amount",)}
 # Felder, die nur mit Leserecht im eigenen Bereich sichtbar sind (nicht über SHARED_READ)
 AREA_FIELDS = {"sponsors": ("files",)}
+# Felder, die nur der Server setzt (beim Speichern über die API verworfen)
+SERVER_FIELDS = {"posts": ("publish_state", "publish_log", "published_at"), "story_rules": ("last_run", "last_result")}
 # Dateien aus data/media, die der Browser direkt anzeigen darf. Alles andere wird als Download ausgeliefert.
 MEDIA_INLINE = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf"}
 
@@ -397,6 +417,8 @@ def init_db():
         conn.execute("CREATE TABLE IF NOT EXISTS group_perms (group_id INTEGER, area TEXT, level INTEGER, PRIMARY KEY (group_id, area))")
         conn.execute("CREATE TABLE IF NOT EXISTS user_groups (user_id INTEGER, group_id INTEGER, PRIMARY KEY (user_id, group_id))")
         conn.execute("CREATE TABLE IF NOT EXISTS user_perms (user_id INTEGER, area TEXT, level INTEGER, PRIMARY KEY (user_id, area))")
+        # Zugangsdaten für Facebook/Instagram: nie über die API lesbar, nicht im Backup-Download
+        conn.execute("CREATE TABLE IF NOT EXISTS secrets (key TEXT PRIMARY KEY, value TEXT)")
         if conn.execute("SELECT COUNT(*) FROM groups").fetchone()[0] == 0:
             for i, (name, desc, perms) in enumerate(DEFAULT_GROUPS):
                 gid = conn.execute("INSERT INTO groups (name, description, sort) VALUES (?, ?, ?)", (name, desc, i)).lastrowid
@@ -628,6 +650,234 @@ def clean_order(fields, data, qty):
 
 
 # ---------------------------------------------------------------------------
+# Automatisch posten: Facebook-Seite und Instagram über die Meta Graph API
+# Das Seiten-Token liegt in der Tabelle secrets (nie über die API lesbar, nicht im Backup-Download).
+# Instagram holt Bilder selbst ab, dafür gibt es signierte Links /teilen/<sig>/<datei> (nur Bilder).
+# ---------------------------------------------------------------------------
+GRAPH = ENV("TMH_GRAPH_URL") or "https://graph.facebook.com/v26.0"   # Variable nur für lokale Tests mit einem Test-Server
+SOCIAL_LOCK = threading.Lock()
+POST_LATE_HOURS = 24        # freigegebene Posts, die länger überfällig sind, werden nicht mehr nachgeholt
+STORY_LATE_MINUTES = 180    # Story-Regeln: so lange nach der geplanten Uhrzeit wird noch gepostet (z. B. nach Neustart)
+SHARE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
+
+
+class GraphError(Exception):
+    pass
+
+
+def secret_get(conn, key):
+    r = conn.execute("SELECT value FROM secrets WHERE key=?", (key,)).fetchone()
+    return r["value"] if r and r["value"] is not None else ""
+
+
+def secret_set(conn, key, value):
+    conn.execute("INSERT OR REPLACE INTO secrets (key, value) VALUES (?, ?)", (key, value))
+
+
+def social_config():
+    with db() as conn:
+        cfg = {k: secret_get(conn, k) for k in ("fb_token", "fb_page_id", "fb_page_name", "ig_user_id", "ig_username", "public_url", "share_key")}
+        if not cfg["share_key"]:
+            cfg["share_key"] = secrets.token_hex(32)
+            secret_set(conn, "share_key", cfg["share_key"])
+    return cfg
+
+
+def share_sig(key, name):
+    return hmac.new(key.encode(), name.encode(), hashlib.sha256).hexdigest()[:40]
+
+
+def graph(method, path, params=None, token=None, files=None):
+    """Aufruf der Graph API. files: {feld: (dateiname, bytes, mime)} wird als multipart gesendet."""
+    url = f"{GRAPH}/{path.lstrip('/')}"
+    params = {k: v for k, v in (params or {}).items() if v is not None}
+    if token:
+        params["access_token"] = token
+    if method == "GET":
+        req = urllib.request.Request(url + "?" + urlencode(params))
+    elif files:
+        b = uuid.uuid4().hex
+        body = io.BytesIO()
+        for k, v in params.items():
+            body.write(f'--{b}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n'.encode() + str(v).encode() + b"\r\n")
+        for k, (fname, data, mime) in files.items():
+            body.write(f'--{b}\r\nContent-Disposition: form-data; name="{k}"; filename="{fname}"\r\nContent-Type: {mime}\r\n\r\n'.encode())
+            body.write(data + b"\r\n")
+        body.write(f"--{b}--\r\n".encode())
+        req = urllib.request.Request(url, data=body.getvalue(), method="POST", headers={"Content-Type": f"multipart/form-data; boundary={b}"})
+    else:
+        req = urllib.request.Request(url, data=urlencode(params).encode(), method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=90) as r:
+            return json.loads(r.read().decode("utf-8") or "{}")
+    except urllib.error.HTTPError as e:
+        try:
+            msg = json.loads(e.read().decode("utf-8")).get("error", {}).get("message")
+        except ValueError:
+            msg = None
+        raise GraphError(msg or f"Meta antwortet mit Fehler {e.code}")
+    except urllib.error.URLError as e:
+        raise GraphError(f"Keine Verbindung zu Meta ({e.reason})")
+
+
+def social_connect(token, public_url):
+    """Prüft das Seiten-Token und liest Seite und verknüpftes Instagram-Konto aus."""
+    me = graph("GET", "me", {"fields": "id,name"}, token)
+    page = graph("GET", me["id"], {"fields": "id,name,instagram_business_account{id,username}"}, token)
+    ig = page.get("instagram_business_account") or {}
+    with db() as conn:
+        secret_set(conn, "fb_token", token)
+        secret_set(conn, "fb_page_id", page["id"])
+        secret_set(conn, "fb_page_name", page.get("name", ""))
+        secret_set(conn, "ig_user_id", ig.get("id", ""))
+        secret_set(conn, "ig_username", ig.get("username", ""))
+        secret_set(conn, "public_url", (public_url or "").strip().rstrip("/"))
+    return {"page": page.get("name", ""), "instagram": ig.get("username", "")}
+
+
+def media_bytes(path):
+    """/media/datei.png -> (name, bytes, mime) oder Fehler."""
+    name = (path or "").rsplit("/", 1)[-1]
+    f = MEDIA / name
+    if not path or not path.startswith("/media/") or not f.is_file():
+        raise GraphError("Das Bild wurde nicht gefunden.")
+    return name, f.read_bytes(), mimetypes.guess_type(name)[0] or "application/octet-stream"
+
+
+def publish_facebook(cfg, image, text, story):
+    page, tok = cfg["fb_page_id"], cfg["fb_token"]
+    if story:
+        if not image:
+            raise GraphError("Für eine Story wird ein Bild gebraucht.")
+        up = graph("POST", f"{page}/photos", {"published": "false"}, tok, {"source": media_bytes(image)})
+        res = graph("POST", f"{page}/photo_stories", {"photo_id": up["id"]}, tok)
+        return res.get("post_id") or res.get("id") or ""
+    if image:
+        res = graph("POST", f"{page}/photos", {"caption": text or "", "published": "true"}, tok, {"source": media_bytes(image)})
+        return res.get("post_id") or res.get("id") or ""
+    return graph("POST", f"{page}/feed", {"message": text or ""}, tok).get("id", "")
+
+
+def publish_instagram(cfg, image, text, story):
+    if not cfg["ig_user_id"]:
+        raise GraphError("Mit der Facebook-Seite ist kein Instagram-Business-Konto verknüpft.")
+    if not image:
+        raise GraphError("Instagram braucht ein Bild.")
+    if not cfg["public_url"].startswith("https://"):
+        raise GraphError("Für Instagram fehlt die öffentliche https-Adresse des Hubs (Auto-Posting > Verbindung).")
+    name = media_bytes(image)[0]
+    if Path(name).suffix.lower() not in SHARE_EXT:
+        raise GraphError("Instagram kann dieses Bildformat nicht verarbeiten (bitte JPG oder PNG).")
+    url = f"{cfg['public_url']}/teilen/{share_sig(cfg['share_key'], name)}/{name}"
+    params = {"image_url": url, "media_type": "STORIES"} if story else {"image_url": url, "caption": text or ""}
+    box = graph("POST", f"{cfg['ig_user_id']}/media", params, cfg["fb_token"])
+    for _ in range(20):   # Instagram verarbeitet das Bild erst, dann kann veröffentlicht werden
+        st = graph("GET", box["id"], {"fields": "status_code"}, cfg["fb_token"]).get("status_code")
+        if st == "FINISHED":
+            break
+        if st in ("ERROR", "EXPIRED"):
+            raise GraphError("Instagram konnte das Bild nicht verarbeiten (JPG im Format 4:5 bzw. 9:16 für Storys klappt am sichersten).")
+        time.sleep(3)
+    return graph("POST", f"{cfg['ig_user_id']}/media_publish", {"creation_id": box["id"]}, cfg["fb_token"]).get("id", "")
+
+
+def social_publish(cfg, image, text, targets, story):
+    """Postet auf alle Ziele. Liefert (zustand, protokoll, facebook_id)."""
+    t = (targets or "Facebook").lower()
+    jobs = [("Facebook", publish_facebook)] if "facebook" in t else []
+    jobs += [("Instagram", publish_instagram)] if "instagram" in t else []
+    if not jobs:
+        return "fehler", "Kein Ziel ausgewählt.", ""
+    ok, log, fb_id = 0, [], ""
+    for label, fn in jobs:
+        try:
+            rid = fn(cfg, image, text, story)
+            ok += 1
+            log.append(f"{label}: gepostet")
+            if label == "Facebook":
+                fb_id = rid
+        except GraphError as e:
+            log.append(f"{label}: {e}")
+        except Exception as e:  # noqa
+            log.append(f"{label}: unerwarteter Fehler ({e})")
+    state = "gepostet" if ok == len(jobs) else "teilweise" if ok else "fehler"
+    return state, f"{datetime.now():%d.%m.%Y %H:%M} " + " | ".join(log), fb_id
+
+
+def publish_post(cfg, post):
+    fmt = post["format"] or "Feed"
+    if fmt in ("Reel", "Karussell"):
+        state, log, fb_id = "fehler", f"{datetime.now():%d.%m.%Y %H:%M} Format {fmt} wird noch nicht automatisch gepostet.", ""
+    else:
+        state, log, fb_id = social_publish(cfg, post["image"], post["caption"], post["targets"], fmt == "Story")
+    now = datetime.now().isoformat(timespec="seconds")
+    with db() as conn:
+        conn.execute("UPDATE posts SET publish_state=?, publish_log=?, published_at=?, updated_at=? WHERE id=?",
+                     (state, log, now if state != "fehler" else None, now, post["id"]))
+        if state != "fehler":
+            conn.execute("UPDATE posts SET status='Gepostet' WHERE id=?", (post["id"],))
+            if fb_id and fmt != "Story":
+                conn.execute("UPDATE posts SET posted_url=? WHERE id=? AND IFNULL(posted_url,'')=''", (f"https://www.facebook.com/{fb_id}", post["id"]))
+    return state, log
+
+
+def publish_rule(cfg, rule):
+    state, log, _ = social_publish(cfg, rule["image"], "", rule["targets"], True)
+    with db() as conn:
+        conn.execute("UPDATE story_rules SET last_result=? WHERE id=?", (log, rule["id"]))
+    return state, log
+
+
+def social_tick():
+    """Einmal pro Minute: fällige freigegebene Posts und Story-Regeln veröffentlichen (höchstens einmal)."""
+    cfg = social_config()
+    if not cfg["fb_token"]:
+        return
+    now = datetime.now()
+    today, hm = now.strftime("%Y-%m-%d"), now.strftime("%H:%M")
+    claimed_posts, claimed_rules = [], []
+    with db() as conn:
+        due = conn.execute("SELECT * FROM posts WHERE auto_publish=1 AND IFNULL(publish_state,'')='' AND IFNULL(date,'')!='' "
+                           "AND (date < ? OR (date = ? AND IFNULL(NULLIF(time,''),'00:00') <= ?))", (today, today, hm)).fetchall()
+        for p in due:
+            planned = datetime.strptime(f"{p['date']} {(p['time'] or '00:00')[:5]}", "%Y-%m-%d %H:%M")
+            if (now - planned).total_seconds() > POST_LATE_HOURS * 3600:
+                conn.execute("UPDATE posts SET publish_state='verpasst', publish_log=? WHERE id=?",
+                             (f"{now:%d.%m.%Y %H:%M} Nicht gepostet: Zeitpunkt lag mehr als {POST_LATE_HOURS} Stunden zurück.", p["id"]))
+                continue
+            # zuerst als „läuft“ markieren, damit ein Post auch bei Fehlern nie doppelt rausgeht
+            if conn.execute("UPDATE posts SET publish_state='läuft' WHERE id=? AND IFNULL(publish_state,'')=''", (p["id"],)).rowcount:
+                claimed_posts.append(p)
+        wd = str(now.isoweekday())
+        for r in conn.execute("SELECT * FROM story_rules WHERE active=1 AND IFNULL(last_run,'') != ?", (today,)).fetchall():
+            if wd not in (r["weekdays"] or "").split(",") or not r["time"] or r["time"][:5] > hm:
+                continue
+            if (r["valid_from"] and today < r["valid_from"]) or (r["valid_until"] and today > r["valid_until"]):
+                continue
+            late = (now - datetime.strptime(f"{today} {r['time'][:5]}", "%Y-%m-%d %H:%M")).total_seconds() / 60
+            if not conn.execute("UPDATE story_rules SET last_run=? WHERE id=? AND IFNULL(last_run,'') != ?", (today, r["id"], today)).rowcount:
+                continue
+            if late > STORY_LATE_MINUTES:
+                conn.execute("UPDATE story_rules SET last_result=? WHERE id=?", (f"{now:%d.%m.%Y %H:%M} Ausgelassen: der Hub lief zur geplanten Zeit nicht.", r["id"]))
+                continue
+            claimed_rules.append(r)
+    for p in claimed_posts:
+        publish_post(cfg, p)
+    for r in claimed_rules:
+        publish_rule(cfg, r)
+
+
+def social_loop():
+    while True:
+        try:
+            with SOCIAL_LOCK:
+                social_tick()
+        except Exception as e:  # noqa
+            print("Auto-Posting fehlgeschlagen:", e)
+        threading.Event().wait(60)
+
+
+# ---------------------------------------------------------------------------
 # Sicherungen
 # ---------------------------------------------------------------------------
 def db_snapshot(target: Path):
@@ -664,7 +914,7 @@ def backup_loop():
         threading.Event().wait(3600)
 
 
-AUTH_TABLES = ("users", "sessions", "groups", "group_perms", "user_groups", "user_perms")
+AUTH_TABLES = ("users", "sessions", "groups", "group_perms", "user_groups", "user_perms", "secrets")
 
 
 def restore_backup(raw: bytes):
@@ -1220,6 +1470,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_auth(method, p[1:])
         if head == "bestellen":
             return self.public_order(method, p[1:])
+        if head == "teilen" and method == "GET" and len(p) == 3:
+            # Bild für Instagram: nur mit gültiger Signatur, nur Bilddateien
+            name = p[2]
+            if re.fullmatch(r"[A-Za-z0-9._-]{1,120}", name) and Path(name).suffix.lower() in SHARE_EXT \
+                    and hmac.compare_digest(p[1], share_sig(social_config()["share_key"], name)):
+                return self.serve_under(MEDIA, [name], inline=MEDIA_INLINE)
+            return self.send_error(404)
 
         # Ab hier nur mit Anmeldung
         user = self.current_user()
@@ -1467,6 +1724,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self.deny()
                 return self.send_json(sync_sheet())
 
+            if name == "social":
+                return self.api_social(method, p[1:], user, can)
+
             if name == "apparel" and method == "POST" and len(p) == 3 and p[2] == "new-link":
                 if max(perms.get(a, 0) for a in TABLE_AREAS_ANY["apparel"]) < 2:
                     return self.deny()
@@ -1493,6 +1753,68 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa
             print("Fehler:", repr(e))
             return self.send_json({"error": str(e)}, 500)
+
+    # -- Auto-Posting (Facebook/Instagram) ---------------------------------
+    def api_social(self, method, p, user, can):
+        sub = p[0] if p else ""
+        if method == "GET" and not sub:
+            if not can("medien", 1):
+                return self.deny()
+            cfg = social_config()
+            return self.send_json({"connected": bool(cfg["fb_token"]), "page": cfg["fb_page_name"], "instagram": cfg["ig_username"],
+                                   "public_url": cfg["public_url"], "is_admin": bool(user["is_admin"])})
+        if sub == "connection":
+            if not user["is_admin"]:
+                return self.deny("Nur Admins können die Verbindung einrichten.")
+            if method == "DELETE":
+                with db() as conn:
+                    for k in ("fb_token", "fb_page_id", "fb_page_name", "ig_user_id", "ig_username"):
+                        secret_set(conn, k, "")
+                return self.send_json({"ok": True})
+            if method == "PUT":
+                data = self.read_json()
+                token = (data.get("token") or "").strip() or social_config()["fb_token"]
+                if not token:
+                    return self.send_json({"error": "Bitte das Seiten-Token eintragen."}, 400)
+                try:
+                    return self.send_json(social_connect(token, data.get("public_url")))
+                except GraphError as e:
+                    return self.send_json({"error": f"Verbindung fehlgeschlagen: {e}"}, 400)
+                except (KeyError, TypeError):
+                    return self.send_json({"error": "Das Token gehört zu keiner Facebook-Seite. Bitte ein Seiten-Token verwenden."}, 400)
+        if sub == "publish" and method == "POST":
+            if not can("medien", 2):
+                return self.deny()
+            data = self.read_json()
+            cfg = social_config()
+            if not cfg["fb_token"]:
+                return self.send_json({"error": "Es ist noch keine Facebook-Seite verbunden."}, 400)
+            with SOCIAL_LOCK, db() as conn:
+                if data.get("post_id"):
+                    row = conn.execute("SELECT * FROM posts WHERE id=?", (int(data["post_id"]),)).fetchone()
+                    if not row:
+                        return self.send_json({"error": "Post nicht gefunden."}, 404)
+                    if row["publish_state"] in ("gepostet", "läuft") and not data.get("again"):
+                        return self.send_json({"error": "Dieser Post ist schon gepostet."}, 400)
+                    conn.execute("UPDATE posts SET publish_state='läuft' WHERE id=?", (row["id"],))
+                elif data.get("rule_id"):
+                    row = conn.execute("SELECT * FROM story_rules WHERE id=?", (int(data["rule_id"]),)).fetchone()
+                    if not row:
+                        return self.send_json({"error": "Regel nicht gefunden."}, 404)
+                else:
+                    return self.send_json({"error": "Nichts ausgewählt."}, 400)
+            with SOCIAL_LOCK:
+                state, log = publish_post(cfg, row) if data.get("post_id") else publish_rule(cfg, row)
+            return self.send_json({"state": state, "log": log})
+        if sub == "reset" and method == "POST":
+            # Post nach Fehler oder verpasstem Termin wieder einplanen
+            if not can("medien", 2):
+                return self.deny()
+            with db() as conn:
+                conn.execute("UPDATE posts SET publish_state=NULL WHERE id=? AND publish_state IN ('fehler', 'verpasst', 'teilweise', 'läuft')",
+                             (int(self.read_json().get("post_id") or 0),))
+            return self.send_json({"ok": True})
+        return self.send_json({"error": "Unbekannter Pfad"}, 404)
 
     # -- Eigenes Profil ---------------------------------------------------
     PROFILE_FIELDS = ("email", "phone", "street", "zip", "city", "emergency_contact", "consent_photo")
@@ -1667,7 +1989,7 @@ class Handler(BaseHTTPRequestHandler):
 
             if method == "POST":
                 vals = clean_values(table, self.read_json())
-                for f in hide:
+                for f in hide + SERVER_FIELDS.get(table, ()):
                     vals.pop(f, None)
                 if table == "apparel":
                     vals["public_token"] = secrets.token_urlsafe(18)
@@ -1681,7 +2003,7 @@ class Handler(BaseHTTPRequestHandler):
 
             if method == "PUT" and rid is not None:
                 vals = clean_values(table, self.read_json())
-                for f in hide:
+                for f in hide + SERVER_FIELDS.get(table, ()):
                     vals.pop(f, None)
                 vals.pop("public_token", None)   # neuer Link nur über /api/apparel/<id>/new-link
                 vals["updated_at"] = now
@@ -1753,7 +2075,7 @@ class Handler(BaseHTTPRequestHandler):
             # Zugangsdaten gehören nicht in ein heruntergeladenes Backup
             c = sqlite3.connect(tmp)
             try:
-                for t in ("sessions", "users", "user_groups", "user_perms"):
+                for t in ("sessions", "users", "user_groups", "user_perms", "secrets"):
                     c.execute(f"DELETE FROM {t}")
                 c.commit()
                 c.execute("VACUUM")
@@ -1964,7 +2286,7 @@ def main():
     if not SERVER_MODE:
         print("  Zum Beenden dieses Fenster schließen (oder Strg+C).")
     print("=" * 56, flush=True)
-    for fn in (sync_loop, backup_loop, cleanup_loop):
+    for fn in (sync_loop, backup_loop, cleanup_loop, social_loop):
         threading.Thread(target=fn, daemon=True).start()
     if not SERVER_MODE and "--no-browser" not in sys.argv:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()

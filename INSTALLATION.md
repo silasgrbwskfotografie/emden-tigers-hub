@@ -131,6 +131,15 @@ Beim Update bleiben `data/` und `.env` unverändert.
 
 Der Server liest die Tabelle **Social Media Spieler** alle 5 Minuten ein. Die Tabelle muss dafür auf **Jeder mit dem Link: Betrachter** stehen. Link und Intervall stehen unter **Einstellungen**.
 
+## Facebook und Instagram (Auto-Posting)
+
+Unter **Medien > Auto-Posting** verbindet ein Admin die Facebook-Seite. Dafür braucht es ein **Seiten-Token**, die Schritte stehen dort direkt auf der Seite (Meta-App anlegen, Token im Graph API Explorer erzeugen und verlängern, Seiten-Token aus `me/accounts` kopieren).
+
+- Facebook-Posts und -Storys funktionieren überall, auch auf einem Test-PC.
+- **Instagram** braucht ein Business- oder Creator-Konto, das mit der Facebook-Seite verknüpft ist, und die **öffentliche Adresse** des Hubs (z. B. `https://hub.deinedomain.de`), weil Instagram die Bilder selbst abholt.
+- Der Hub muss zur geplanten Zeit laufen. Storys werden bis zu 3 Stunden nachgeholt, freigegebene Posts bis zu 24 Stunden.
+- Das Token liegt nur in der Datenbank des Servers und ist nicht im Backup-Download enthalten.
+
 ## Lokal testen (am PC)
 
 `Start.bat` startet den Hub lokal zum Ausprobieren (braucht Python 3). Beim ersten Start legst du im Browser einen Zugang an. Die lokalen Daten liegen im Ordner `data/` und werden nicht ins Repository übernommen.
