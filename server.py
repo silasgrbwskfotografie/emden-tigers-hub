@@ -388,6 +388,13 @@ DEFAULT_SETTINGS = {
     "site_youth_ages": "",
     "site_youth_training_times": "",
     "site_youth_training_place": "",
+    # Hinweis-Leiste oben auf jeder Seite (z. B. „Heimspiel am Samstag“), nur bis zum Datum sichtbar
+    "site_notice_text": "",
+    "site_notice_link": "",
+    "site_notice_until": "",
+    # Webseite im Hub (Bereich Medien): eigene Bilder und Aufbau der Startseite als JSON, nicht öffentlich
+    "web_images": "{}",
+    "web_layout": "",
 }
 SITE_TEXTS_VERSION = "1"   # erhöhen, wenn neue Standardtexte in leere Felder bestehender Server übernommen werden sollen
 
@@ -1315,6 +1322,114 @@ def insta_refresh():
         INSTA_LOCK.release()
 
 
+# ---------------------------------------------------------------------------
+# Webseite im Hub verwalten: Bilder (vom Browser als WebP in 640/1280/1920 erzeugt), Aufbau der Startseite
+# ---------------------------------------------------------------------------
+SITE_DIR = DATA / "site"
+SITE_WIDTHS = (640, 1280, 1920)
+SITE_IMAGE_MAX = 4 * 1024 * 1024
+
+
+def web_images(conn):
+    try:
+        v = json.loads(get_setting(conn, "web_images") or "{}")
+        return v if isinstance(v, dict) else {}
+    except ValueError:
+        return {}
+
+
+def web_layout(conn):
+    """Reihenfolge und Sichtbarkeit der Startseiten-Abschnitte: [[schlüssel, sichtbar], ...], unbekannte verworfen, neue ergänzt."""
+    try:
+        raw = json.loads(get_setting(conn, "web_layout") or "[]")
+    except ValueError:
+        raw = []
+    out, seen = [], set()
+    for item in raw if isinstance(raw, list) else []:
+        if isinstance(item, list) and len(item) == 2 and item[0] in website.START_SECTIONS and item[0] not in seen:
+            out.append([item[0], bool(item[1])])
+            seen.add(item[0])
+    return out + [[k, True] for k in website.START_SECTIONS if k not in seen]
+
+
+def public_site():
+    """Eigene Bilder (nur Dateiname, Maße, Alt-Text) und Aufbau der Startseite für website.py."""
+    with db() as conn:
+        imgs, layout = web_images(conn), web_layout(conn)
+    out = {}
+    for slot, m in imgs.items():
+        if slot not in website.IMAGE_SLOTS or not isinstance(m, dict):
+            continue
+        files = {int(w): f for w, f in (m.get("files") or {}).items() if str(w).isdigit() and (SITE_DIR / str(f)).is_file()}
+        out[slot] = {"alt": str(m.get("alt") or ""), "w": int(m.get("w") or 0), "h": int(m.get("h") or 0),
+                     "src": {w: f"/web/site/{f}" for w, f in sorted(files.items())}}
+    return {"images": out, "layout": layout}
+
+
+def website_overview(text_keys):
+    """Alles für die Seite „Webseite“ im Hub: Texte, Bilder, Aufbau und eine Checkliste offener Punkte."""
+    std = website.image_meta(standard=True)
+    site = public_site()
+    with db() as conn:
+        texts = {k: get_setting(conn, k) for k in text_keys}
+        imgs = web_images(conn)
+        players = conn.execute("SELECT * FROM players WHERE active=1").fetchall()
+        sponsors = conn.execute("SELECT name, logo FROM sponsors WHERE active=1").fetchall()
+        today = datetime.now().date().isoformat()
+        games = conn.execute("SELECT g.*, o.name AS opp, o.logo AS opp_logo FROM games g LEFT JOIN opponents o ON o.id = g.opponent_id "
+                             "WHERE IFNULL(g.date,'') >= ? ORDER BY g.date", (today,)).fetchall()
+        secret = secret_get(conn, "ig_user_id")
+    images = []
+    for slot, (label, where) in website.IMAGE_SLOTS.items():
+        own = site["images"].get(slot)
+        s = std.get(slot) or {}
+        src = (own or {}).get("src") or {}
+        preview = src.get(640) or src.get(min(src)) if src else (f"/web/assets/img/{slot}-640.webp" if s else "")
+        images.append({"slot": slot, "label": label, "where": where, "own": bool(own), "preview": preview,
+                       "alt": (imgs.get(slot) or {}).get("alt") or s.get("alt", ""), "standard_alt": s.get("alt", ""),
+                       "w": (own or s).get("w", 0), "h": (own or s).get("h", 0)})
+    checks = []
+    def add(level, text, link=""):
+        checks.append({"level": level, "text": text, "link": link})
+    for k, label in website.REQUIRED_TEXTS.items():
+        if not (texts.get(k) or "").strip():
+            add("fehlt", f"Text fehlt: {label} (erscheint als gelber Platzhalter)", "#/website/texte")
+    herren = [p for p in players if (p["team"] or "Herren") == "Herren" and (p["kind"] or "Spieler") == "Spieler"]
+    no_consent = [p for p in herren if not p["consent"]]
+    if not herren:
+        add("hinweis", "Noch keine aktiven Herren-Spieler: Auf der Seite Herren fehlt der Kader.", "#/players")
+    if no_consent:
+        add("hinweis", f"{len(no_consent)} Herren-Spieler ohne Foto-Einwilligung: Sie erscheinen mit dem Tiger-Logo statt Foto.", "#/players")
+    no_photo = [p for p in herren if p["consent"] and not p["photo"]]
+    if no_photo:
+        add("hinweis", f"{len(no_photo)} Herren-Spieler mit Einwilligung, aber ohne Foto.", "#/players")
+    no_pos = [p for p in herren if not p["position"] or not p["unit"]]
+    if no_pos:
+        add("hinweis", f"{len(no_pos)} Herren-Spieler ohne Position oder Unit: Sie stehen im Kader unter „Team“.", "#/players")
+    if not [p for p in players if (p["kind"] or "Spieler") != "Spieler"]:
+        add("hinweis", "Noch keine Coaches eingetragen.", "#/players")
+    if not games:
+        add("hinweis", "Keine kommenden Spiele: Startseite und Spielplan zeigen „Termine folgen“.", "#/games")
+    for g in games:
+        day = website.fmt_date(g["date"]) or g["date"]
+        if not g["opp"]:
+            add("hinweis", f"Spiel am {day} ohne Gegner.", "#/games")
+        elif not g["opp_logo"]:
+            add("hinweis", f"Gegner {g['opp']} ohne Logo (Spiel am {day}).", "#/opponents")
+        if not g["time"]:
+            add("hinweis", f"Spiel am {day} ohne Kickoff-Zeit.", "#/games")
+    missing_logo = [s["name"] for s in sponsors if not s["logo"]]
+    if missing_logo:
+        add("hinweis", "Sponsoren ohne Logo (erscheinen nur als Name): " + ", ".join(missing_logo[:5]), "#/sponsors")
+    if not secret:
+        add("hinweis", "Instagram ist nicht verbunden: Das Raster zeigt die Ersatzbilder der Galerie.", "#/autopost")
+    notice_until = texts.get("site_notice_until") or ""
+    if texts.get("site_notice_text") and notice_until and notice_until < today:
+        add("hinweis", "Die Hinweis-Leiste ist abgelaufen und wird nicht mehr angezeigt.", "#/website/hinweis")
+    return {"texts": texts, "images": images, "checks": checks, "site_url": SITE_URL,
+            "layout": [{"key": k, "label": website.START_SECTIONS[k], "visible": v} for k, v in site["layout"]]}
+
+
 def public_instagram_raw():
     try:
         return json.loads(INSTA_FEED.read_text(encoding="utf-8"))
@@ -2188,7 +2303,8 @@ class Handler(BaseHTTPRequestHandler):
     def end_headers(self):
         # Grundlegende Sicherheits-Header (Caddy ergänzt HSTS)
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("X-Frame-Options", "DENY")
+        # Öffentliche Seiten darf nur der Hub selbst einbetten (Vorschau unter Webseite), alles andere nie
+        self.send_header("X-Frame-Options", "SAMEORIGIN" if getattr(self, "frame_ok", False) else "DENY")
         self.send_header("Referrer-Policy", "same-origin")
         super().end_headers()
 
@@ -2332,6 +2448,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.serve_under(website.WEB / "assets", p[2:], cache=True)
         if method == "GET" and p[:2] == ["web", "insta"] and len(p) == 3:
             return self.serve_under(INSTA_DIR, p[2:], cache=True)
+        if method == "GET" and p[:2] == ["web", "site"] and len(p) == 3 and p[2].endswith(".webp"):
+            return self.serve_under(SITE_DIR, p[2:], cache=True)
         if method == "GET" and head not in ("hub", "static", "media", "api"):
             return self.send_site("404", 404)
 
@@ -2366,11 +2484,16 @@ class Handler(BaseHTTPRequestHandler):
     def send_site(self, slug, status=200):
         """Seite der öffentlichen Webseite aus den öffentlichen Daten bauen."""
         data = {"info": public_info(), "games": public_games(), "team": public_team(), "sponsors": public_sponsors(),
-                "instagram": public_instagram() if slug == "" else []}
+                "instagram": public_instagram() if slug == "" else [], "site": public_site()}
         q = parse_qs(urlparse(self.path).query)
         sent = (q.get("gesendet") or [None])[0]
         data["preselect"] = (q.get("anliegen") or [""])[0]   # Vorauswahl im Kontaktformular (website.py prüft den Wert)
-        return self.send_html(website.render(slug, data, sent), status)
+        html = website.render(slug, data, sent)
+        self.frame_ok = True
+        try:
+            return self.send_html(html, status)
+        finally:
+            self.frame_ok = False
 
     # -- Anmeldung --------------------------------------------------------
     def api_auth(self, method, p):
@@ -2682,6 +2805,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.deny()
                 return self.send_json(sync_sheet())
 
+            if name == "website":
+                return self.api_website(method, p[1:], user, can)
             if name == "social":
                 return self.api_social(method, p[1:], user, can)
             if name == "notify":
@@ -3154,6 +3279,70 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"ok": True})
 
         return self.send_json({"error": "Methode nicht erlaubt"}, 405)
+
+    # -- Webseite im Hub (Bereich Medien) ---------------------------------
+    def api_website(self, method, p, user, can):
+        if not can("medien", 1):
+            return self.deny()
+        if method != "GET" and not can("medien", 2):
+            return self.deny("Zum Bearbeiten der Webseite braucht es Schreibrecht im Bereich Medien.")
+        text_keys = [k for k in DEFAULT_SETTINGS if k.startswith("site_")]
+        if not p and method == "PUT":
+            data = self.read_json()
+            texts = {k: str(v)[:5000] for k, v in (data.get("texts") or {}).items() if k in text_keys}
+            with db() as conn:
+                old = {k: get_setting(conn, k) for k in texts}
+                changes = {k: [audit_short(old[k]), audit_short(v)] for k, v in texts.items() if (old[k] or "") != v}
+                for k, v in texts.items():
+                    set_setting(conn, k, v)
+                if isinstance(data.get("layout"), list):
+                    set_setting(conn, "web_layout", json.dumps([[str(x[0]), bool(x[1])] for x in data["layout"]
+                                                                if isinstance(x, list) and len(x) == 2 and x[0] in website.START_SECTIONS]))
+                    changes["Aufbau Startseite"] = ["", " > ".join(k for k, v in web_layout(conn) if v)]
+                if changes:
+                    audit(conn, user, "geändert", "settings", None, "Webseite", changes)
+            return self.api_website("GET", [], user, can)
+        if p[:1] == ["image"] and len(p) == 2 and p[1] in website.IMAGE_SLOTS:
+            slot = p[1]
+            with db() as conn:
+                imgs = web_images(conn)
+                cur = imgs.get(slot) or {}
+                if method == "DELETE":   # zurück zum Standardbild
+                    for f in (cur.get("files") or {}).values():
+                        (SITE_DIR / str(f)).unlink(missing_ok=True)
+                    imgs.pop(slot, None)
+                    action = "Standardbild"
+                elif method == "PUT":    # nur Alt-Text
+                    imgs[slot] = {**cur, "alt": str(self.read_json().get("alt") or "")[:300]}
+                    action = "Alt-Text"
+                elif method == "POST":
+                    data = self.read_json()
+                    files, stamp = {}, uuid.uuid4().hex[:10]
+                    SITE_DIR.mkdir(parents=True, exist_ok=True)
+                    for w, url in (data.get("files") or {}).items():
+                        m = re.match(r"^data:image/webp;base64,(.+)$", str(url), re.S)
+                        if not (str(w).isdigit() and int(w) in SITE_WIDTHS and m):
+                            continue
+                        raw = base64.b64decode(m.group(1))
+                        if len(raw) > SITE_IMAGE_MAX or raw[:4] != b"RIFF" or raw[8:12] != b"WEBP":
+                            return self.send_json({"error": "Das Bild ist ungültig oder zu groß."}, 400)
+                        name = f"{slot}-{w}-{stamp}.webp"
+                        (SITE_DIR / name).write_bytes(raw)
+                        files[str(w)] = name
+                    if not files:
+                        return self.send_json({"error": "Kein Bild empfangen."}, 400)
+                    for f in (cur.get("files") or {}).values():
+                        (SITE_DIR / str(f)).unlink(missing_ok=True)
+                    imgs[slot] = {"alt": str(data.get("alt") or "")[:300], "w": int(data.get("w") or 0), "h": int(data.get("h") or 0), "files": files}
+                    action = "neues Bild"
+                else:
+                    return self.send_json({"error": "Methode nicht erlaubt"}, 405)
+                set_setting(conn, "web_images", json.dumps(imgs))
+                audit(conn, user, "geändert", "settings", None, f"Webseite Bild {website.IMAGE_SLOTS[slot][0]}", {"Änderung": ["", action]})
+            return self.api_website("GET", [], user, can)
+        if p or method != "GET":
+            return self.send_json({"error": "Nicht gefunden"}, 404)
+        return self.send_json(website_overview(text_keys))
 
     def api_settings(self, method):
         with db() as conn:

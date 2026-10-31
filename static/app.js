@@ -48,7 +48,7 @@ async function checkVersion() {
 // Teamkleidung dürfen Verein, Finanzen und Medien verwalten (wie TABLE_AREAS_ANY im Server)
 const APPAREL_AREAS = 'verein|finanzen|medien';
 const PAGE_AREA = {
-  posts: 'medien', autopost: 'medien', social: 'medien', media: 'medien', team: 'medien', magazine: 'medien',
+  posts: 'medien', autopost: 'medien', social: 'medien', media: 'medien', team: 'medien', magazine: 'medien', website: 'medien',
   games: 'verein', players: 'verein', opponents: 'verein', sponsors: 'verein', apparel: APPAREL_AREAS,
   members: 'mitglieder', contacts: 'mitglieder', finance: 'finanzen', cards: 'finanzen',
   accounts: 'admin', groups: 'admin', settings: 'admin', log: 'admin',

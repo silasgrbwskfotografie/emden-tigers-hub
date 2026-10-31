@@ -1343,27 +1343,203 @@ App.pages.cards = async (view) => {
 };
 
 /* ====================================================================== */
-/* Einstellungen */
-// Texte der öffentlichen Webseite (Schlüssel site_* in den Einstellungen, siehe DEFAULT_SETTINGS in server.py)
-const SITE_FIELDS = [
-  { key: 'site_hero_title', label: 'Startseite: große Überschrift', hint: 'Leer lassen für den Vereinsnamen.' },
-  { key: 'site_contact_email', label: 'Kontakt-E-Mail', hint: 'Steht im Footer, Anfragen aus dem Kontaktformular gehen hierhin.' },
-  { key: 'site_hero_text', label: 'Startseite: Satz unter der Überschrift', type: 'textarea', rows: 2 },
-  { key: 'site_about', label: 'Startseite: Wer wir sind', type: 'textarea', rows: 4 },
-  { key: 'site_training_times', label: 'Herren: Trainingszeiten (eine Zeile pro Termin)', type: 'textarea', rows: 3 },
-  { key: 'site_training_place', label: 'Herren: Trainingsort' },
-  { key: 'site_training_address', label: 'Herren: Adresse Trainingsort' },
-  { key: 'site_youth_text', label: 'Next Generation: Vorstellung Flag Football', type: 'textarea', rows: 4 },
-  { key: 'site_youth_ages', label: 'Next Generation: Alter', placeholder: 'z. B. 8 bis 15 Jahre' },
-  { key: 'site_youth_training_times', label: 'Next Generation: Trainingszeiten (eine Zeile pro Termin)', type: 'textarea', rows: 3 },
-  { key: 'site_youth_training_place', label: 'Next Generation: Trainingsort mit Adresse' },
-  { key: 'site_trial_text', label: 'Startseite, Training: Hinweise zum Probetraining (mitbringen, Ausrüstung)', type: 'textarea', rows: 3 },
-  { key: 'site_home_address', label: 'Adresse Heimspielort' },
-  { key: 'site_gameday_text', label: 'Spieltag: Infos für Zuschauer (Parken, Essen, Kinder)', type: 'textarea', rows: 3 },
-  { key: 'site_card_short', label: 'Supporter Karte: Kurztext für die Startseite', type: 'textarea', rows: 2 },
-  { key: 'site_card_text', label: 'Supporter Karte: Leistungen und wo es sie gibt', type: 'textarea', rows: 3 },
-  { key: 'site_sponsor_text', label: 'Sponsoren: Sponsor werden (Ansprechpartner, Möglichkeiten)', type: 'textarea', rows: 3 },
+/* Webseite: Texte, Bilder, Aufbau der Startseite, Hinweis-Leiste, Vorschau (Bereich Medien) */
+// Texte der öffentlichen Webseite nach Seiten (Schlüssel site_* in den Einstellungen, siehe DEFAULT_SETTINGS in server.py)
+const SITE_TEXT_GROUPS = [
+  ['Allgemein', '/', [
+    { key: 'site_contact_email', label: 'Kontakt-E-Mail', hint: 'Steht im Footer und auf der Kontaktseite, Anfragen aus dem Formular gehen hierhin.' },
+  ]],
+  ['Startseite', '/', [
+    { key: 'site_hero_title', label: 'Große Überschrift', hint: 'Leer lassen für den Vereinsnamen.' },
+    { key: 'site_hero_text', label: 'Satz unter der Überschrift', type: 'textarea', rows: 2, full: true },
+    { key: 'site_about', label: 'Wer wir sind', type: 'textarea', rows: 5, full: true, hint: 'Leerzeile = neuer Absatz.' },
+    { key: 'site_trial_text', label: 'Training: Hinweise zum Probetraining (mitbringen, Ausrüstung)', type: 'textarea', rows: 3, full: true },
+    { key: 'site_card_short', label: 'Karte Supporter Karte: Kurztext', type: 'textarea', rows: 2, full: true },
+  ]],
+  ['Herren', '/herren', [
+    { key: 'site_training_times', label: 'Trainingszeiten (eine Zeile pro Termin)', type: 'textarea', rows: 3 },
+    { key: 'site_training_place', label: 'Trainingsort' },
+    { key: 'site_training_address', label: 'Adresse Trainingsort', hint: 'Für den Link „Anfahrt auf der Karte“.' },
+  ]],
+  ['Jugend (Next Generation)', '/jugend', [
+    { key: 'site_youth_text', label: 'Vorstellung Flag Football', type: 'textarea', rows: 5, full: true },
+    { key: 'site_youth_ages', label: 'Alter', placeholder: 'z. B. 8 bis 15 Jahre' },
+    { key: 'site_youth_training_times', label: 'Trainingszeiten (eine Zeile pro Termin)', type: 'textarea', rows: 3 },
+    { key: 'site_youth_training_place', label: 'Trainingsort mit Adresse' },
+  ]],
+  ['Spielplan', '/spielplan', [
+    { key: 'site_home_address', label: 'Adresse Heimspielort', hint: 'Für den Link „Anfahrt auf der Karte“.' },
+    { key: 'site_gameday_text', label: 'Am Spieltag: Infos für Zuschauer (Parken, Essen, Kinder)', type: 'textarea', rows: 3, full: true },
+  ]],
+  ['Sponsoren', '/sponsoren', [
+    { key: 'site_sponsor_text', label: 'Sponsor werden (Ansprechpartner, Möglichkeiten)', type: 'textarea', rows: 4, full: true },
+    { key: 'site_card_text', label: 'Supporter Karte: Leistungen und wo es sie gibt', type: 'textarea', rows: 3, full: true },
+  ]],
 ];
+const SITE_NOTICE_FIELDS = [
+  { key: 'site_notice_text', label: 'Text der Hinweis-Leiste', full: true, placeholder: 'z. B. Heimspiel am Samstag um 15 Uhr: Kommt vorbei!', hint: 'Leer lassen = keine Leiste.' },
+  { key: 'site_notice_link', label: 'Link „Mehr erfahren“ (optional)', placeholder: '/spielplan oder https://...' },
+  { key: 'site_notice_until', label: 'Anzeigen bis einschließlich', type: 'date', hint: 'Danach verschwindet die Leiste von selbst. Leer = ohne Ende.' },
+];
+const WEB_TABS = [['uebersicht', 'Übersicht'], ['texte', 'Texte'], ['bilder', 'Bilder'], ['startseite', 'Aufbau Startseite'], ['hinweis', 'Hinweis-Leiste'], ['vorschau', 'Vorschau']];
+const WEB_PAGES = [['/', 'Start'], ['/herren', 'Herren'], ['/jugend', 'Jugend'], ['/spielplan', 'Spielplan'], ['/sponsoren', 'Sponsoren'], ['/kontakt', 'Kontakt']];
+
+/* Foto im Browser als WebP in 640, 1280 und 1920 px Breite erzeugen (der Server hat keine Bildbearbeitung) */
+async function webpVariants(file) {
+  const img = await new Promise((ok, err) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => err(new Error('Das Bild lässt sich nicht öffnen.')); i.src = URL.createObjectURL(file); });
+  const files = {};
+  let w = 0, h = 0;
+  for (const target of [640, 1280, 1920]) {
+    if (target > img.naturalWidth && Object.keys(files).length) break;   // nicht hochrechnen
+    const scale = Math.min(1, target / img.naturalWidth);
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    const data = c.toDataURL('image/webp', 0.82);
+    if (!data.startsWith('data:image/webp')) throw new Error('Dieser Browser kann keine WebP-Bilder erzeugen. Bitte Chrome, Edge oder Firefox nutzen.');
+    files[target] = data; w = c.width; h = c.height;
+  }
+  URL.revokeObjectURL(img.src);
+  return { files, w, h };
+}
+
+function webHead(tab, data) {
+  const open = data.checks.filter(c => c.level === 'fehlt').length;
+  return `<div class="page-head"><h1>Webseite<small>Texte, Bilder und Aufbau der öffentlichen Vereinswebseite</small></h1>
+      <div class="btn-row"><a class="btn keep" href="/" target="_blank" rel="noopener">Webseite öffnen</a></div></div>
+    <div class="toolbar">${WEB_TABS.map(([k, l]) => `<a class="btn sm ${k === tab ? 'dark' : ''}" href="#/website/${k}">${l}${k === 'uebersicht' && open ? ` <span class="badge red">${open}</span>` : ''}</a>`).join('')}</div>`;
+}
+
+App.pages.website = async (view, args) => {
+  const tab = WEB_TABS.some(t => t[0] === args[0]) ? args[0] : 'uebersicht';
+  let data = await api('website');
+  const saveTexts = async (vals, msg) => {
+    if (Object.values(vals).some(hasDashes) && !confirmBox('In den Texten stehen Gedankenstriche. Trotzdem speichern?')) return false;
+    data = await api('website', 'PUT', { texts: vals }); toast(msg); return true;
+  };
+
+  if (tab === 'uebersicht') {
+    const fehlt = data.checks.filter(c => c.level === 'fehlt'), hinweis = data.checks.filter(c => c.level !== 'fehlt');
+    const row = c => `<li>${esc(c.text)}${c.link ? ` <a href="${esc(c.link)}">Beheben</a>` : ''}</li>`;
+    view.innerHTML = `${webHead(tab, data)}
+      <div class="grid2">
+        <div class="card"><h2>Was noch fehlt</h2>${fehlt.length ? `<ul class="checklist warn">${fehlt.map(row).join('')}</ul>` : '<p class="muted">Alle Texte sind ausgefüllt.</p>'}
+          ${hinweis.length ? `<h3 style="margin-top:16px">Hinweise</h3><ul class="checklist">${hinweis.map(row).join('')}</ul>` : ''}</div>
+        <div class="card"><h2>Was kommt woher?</h2>
+          <ul class="checklist plain">
+            <li><b>Texte</b>: hier unter <a href="#/website/texte">Texte</a>, nach Seiten sortiert.</li>
+            <li><b>Bilder</b>: Titelbilder und Galerie unter <a href="#/website/bilder">Bilder</a>.</li>
+            <li><b>Kader und Coaches</b>: aus <a href="#/players">Kader &amp; Staff</a>. Fotos nur mit Einwilligung, Jugendspieler nie.</li>
+            <li><b>Spiele und Ergebnisse</b>: aus dem <a href="#/games">Spielplan</a>, Logos aus <a href="#/opponents">Gegner</a>.</li>
+            <li><b>Sponsoren</b>: alle aktiven aus <a href="#/sponsors">Sponsoren</a> mit Logo und Website.</li>
+            <li><b>Instagram</b>: die 6 neuesten Beiträge über <a href="#/autopost/einrichtung">Auto-Posting</a>.</li>
+            <li><b>Anfragen</b> aus dem Kontaktformular: unter <a href="#/contacts">Anfragen</a>.</li>
+          </ul>
+          <h3 style="margin-top:16px">Seiten</h3>
+          <div class="btn-row">${WEB_PAGES.map(([u, l]) => `<a class="btn sm" href="${u}" target="_blank" rel="noopener">${l}</a>`).join('')}</div></div>
+      </div>`;
+    return;
+  }
+
+  if (tab === 'texte') {
+    view.innerHTML = `${webHead(tab, data)}
+      <p class="muted small">Leere Felder erscheinen auf der Webseite als gelb markierter Platzhalter. Bitte keine Gedankenstriche verwenden.</p>
+      ${SITE_TEXT_GROUPS.map(([title, url, fields], i) => `<div class="card" style="margin-bottom:16px">
+        <div class="page-head" style="margin:0 0 10px"><h2 style="margin:0">${esc(title)}</h2><a class="btn sm keep" href="${url}" target="_blank" rel="noopener">Seite ansehen</a></div>
+        <form class="form" id="wt_${i}" onsubmit="return false">${fields.map(f => fieldHtml(f, data.texts[f.key])).join('')}</form></div>`).join('')}
+      <div class="btn-row"><button class="btn primary" id="wt_save">Alle Texte speichern</button></div>`;
+    $('#wt_save').onclick = async () => {
+      const vals = Object.assign({}, ...SITE_TEXT_GROUPS.map(([, , fields], i) => readForm($('#wt_' + i), fields)));
+      if (await saveTexts(vals, 'Texte gespeichert')) App.pages.website(view, ['texte']);
+    };
+    return;
+  }
+
+  if (tab === 'bilder') {
+    view.innerHTML = `${webHead(tab, data)}
+      <p class="muted small">Neue Fotos werden automatisch verkleinert und als WebP in drei Größen gespeichert (schnell auf dem Handy). Am besten Querformat ab 1920 px Breite.
+        Der Alt-Text beschreibt das Bild für Suchmaschinen und Menschen, die nicht sehen können. Bitte nur Fotos verwenden, mit denen alle Abgebildeten einverstanden sind.</p>
+      <div class="web-imgs">${data.images.map(m => `<div class="card web-img" data-slot="${m.slot}">
+        <div class="web-img-pic">${m.preview ? `<img src="${esc(m.preview)}" alt="">` : '<div class="empty">Kein Bild</div>'}</div>
+        <h3>${esc(m.label)} ${m.own ? '<span class="badge ok">eigenes Bild</span>' : '<span class="badge">Standard</span>'}</h3>
+        <p class="muted small">${esc(m.where)}${m.w ? ` (${m.w} x ${m.h} px)` : ''}</p>
+        <label class="small">Alt-Text<textarea class="input" rows="2" data-alt>${esc(m.alt)}</textarea></label>
+        <div class="btn-row" style="margin-top:8px"><button class="btn sm primary" data-up>Bild ersetzen</button><button class="btn sm" data-alt-save>Alt-Text speichern</button>
+          ${m.own ? '<button class="btn sm ghost" data-reset>Standardbild</button>' : ''}<input type="file" accept="image/jpeg,image/png,image/webp" hidden></div></div>`).join('')}</div>`;
+    $$('.web-img').forEach(box => {
+      const slot = box.dataset.slot, file = $('input[type=file]', box), alt = () => $('[data-alt]', box).value.trim();
+      $('[data-up]', box).onclick = () => file.click();
+      file.onchange = async () => {
+        const f = file.files[0]; if (!f) return;
+        if (!alt() && !confirmBox('Ohne Alt-Text hochladen? Besser vorher kurz beschreiben, was zu sehen ist.')) return;
+        try {
+          toast('Bild wird vorbereitet ...');
+          const v = await webpVariants(f);
+          data = await api('website/image/' + slot, 'POST', { ...v, alt: alt() });
+          toast('Bild gespeichert'); App.pages.website(view, ['bilder']);
+        } catch (e) { alert(e.message); }
+      };
+      $('[data-alt-save]', box).onclick = async () => { data = await api('website/image/' + slot, 'PUT', { alt: alt() }); toast('Alt-Text gespeichert'); };
+      if ($('[data-reset]', box)) $('[data-reset]', box).onclick = async () => {
+        if (!confirmBox('Eigenes Bild entfernen und wieder das Standardbild zeigen?')) return;
+        data = await api('website/image/' + slot, 'DELETE'); toast('Standardbild wiederhergestellt'); App.pages.website(view, ['bilder']);
+      };
+    });
+    return;
+  }
+
+  if (tab === 'startseite') {
+    let list = data.layout.map(x => ({ ...x }));
+    const draw = () => {
+      view.innerHTML = `${webHead(tab, data)}
+        <div class="card"><h2>Abschnitte der Startseite</h2>
+          <p class="muted small">Reihenfolge mit den Pfeilen ändern, Haken weg = Abschnitt ausblenden. Das Titelbild bleibt immer ganz oben.
+            Abschnitte ohne Inhalt (z. B. noch keine Ergebnisse) erscheinen von selbst nicht.</p>
+          <ol class="web-order">${list.map((x, i) => `<li class="${x.visible ? '' : 'off'}">
+            <label class="check"><input type="checkbox" data-vis="${i}" ${x.visible ? 'checked' : ''}> ${esc(x.label)}</label>
+            <span class="btn-row"><button class="btn sm" data-upi="${i}" ${i ? '' : 'disabled'} aria-label="nach oben">↑</button><button class="btn sm" data-downi="${i}" ${i < list.length - 1 ? '' : 'disabled'} aria-label="nach unten">↓</button></span></li>`).join('')}</ol>
+          <div class="btn-row" style="margin-top:12px"><button class="btn primary" id="wl_save">Aufbau speichern</button><button class="btn" id="wl_reset">Standard-Reihenfolge</button>
+            <a class="btn keep" href="/" target="_blank" rel="noopener">Startseite ansehen</a></div></div>`;
+      $$('[data-vis]').forEach(c => c.onchange = () => { list[c.dataset.vis].visible = c.checked; draw(); });
+      $$('[data-upi]').forEach(b => b.onclick = () => { const i = +b.dataset.upi; [list[i - 1], list[i]] = [list[i], list[i - 1]]; draw(); });
+      $$('[data-downi]').forEach(b => b.onclick = () => { const i = +b.dataset.downi; [list[i + 1], list[i]] = [list[i], list[i + 1]]; draw(); });
+      $('#wl_reset').onclick = () => { list = WEB_DEFAULT_ORDER.map(k => ({ ...data.layout.find(x => x.key === k), visible: true })); draw(); };
+      $('#wl_save').onclick = async () => { data = await api('website', 'PUT', { layout: list.map(x => [x.key, x.visible]) }); list = data.layout.map(x => ({ ...x })); toast('Aufbau gespeichert'); draw(); };
+    };
+    const WEB_DEFAULT_ORDER = ['karten', 'wer', 'teams', 'training', 'ergebnisse', 'band', 'sponsoren', 'instagram'];
+    draw();
+    return;
+  }
+
+  if (tab === 'hinweis') {
+    const active = data.texts.site_notice_text && (!data.texts.site_notice_until || data.texts.site_notice_until >= todayStr());
+    view.innerHTML = `${webHead(tab, data)}
+      <div class="card"><h2>Hinweis-Leiste</h2>
+        <p class="muted small">Eine rote Leiste ganz oben auf jeder Seite, z. B. für ein Heimspiel, ein Event oder eine Trainingsabsage.</p>
+        <p>${active ? '<span class="badge ok">wird gerade angezeigt</span>' : '<span class="badge">nicht sichtbar</span>'}</p>
+        <form class="form" id="wn_form" onsubmit="return false">${SITE_NOTICE_FIELDS.map(f => fieldHtml(f, data.texts[f.key])).join('')}</form>
+        <div class="btn-row" style="margin-top:12px"><button class="btn primary" id="wn_save">Speichern</button><button class="btn" id="wn_off">Leiste entfernen</button></div></div>`;
+    $('#wn_save').onclick = async () => {
+      const vals = readForm($('#wn_form'), SITE_NOTICE_FIELDS);
+      if (vals.site_notice_link && !/^(\/(?!\/)|https?:\/\/)/.test(vals.site_notice_link)) return alert('Der Link muss mit / (Seite der Webseite) oder https:// beginnen.');
+      if (await saveTexts(vals, 'Hinweis-Leiste gespeichert')) App.pages.website(view, ['hinweis']);
+    };
+    $('#wn_off').onclick = async () => { await saveTexts({ site_notice_text: '', site_notice_link: '', site_notice_until: '' }, 'Leiste entfernt'); App.pages.website(view, ['hinweis']); };
+    return;
+  }
+
+  // Vorschau: die echte Webseite in Handy-, Tablet- oder Desktopbreite
+  const page = App._webPage || '/', width = App._webWidth || 390;
+  view.innerHTML = `${webHead(tab, data)}
+    <div class="toolbar">${WEB_PAGES.map(([u, l]) => `<button class="btn sm ${u === page ? 'dark' : ''}" data-pg="${u}">${l}</button>`).join('')}
+      <span style="flex:1"></span>${[[390, 'Handy'], [768, 'Tablet'], [1280, 'Desktop']].map(([w, l]) => `<button class="btn sm ${w === width ? 'dark' : ''}" data-w="${w}">${l}</button>`).join('')}</div>
+    <div class="web-preview"><iframe src="${page}" title="Vorschau der Webseite" style="width:${width}px"></iframe></div>`;
+  $$('[data-pg]').forEach(b => b.onclick = () => { App._webPage = b.dataset.pg; App.pages.website(view, ['vorschau']); });
+  $$('[data-w]').forEach(b => b.onclick = () => { App._webWidth = +b.dataset.w; App.pages.website(view, ['vorschau']); });
+};
+
+/* ====================================================================== */
+/* Einstellungen */
 
 App.pages.settings = async (view) => {
   const s = App.settings;
@@ -1392,9 +1568,8 @@ App.pages.settings = async (view) => {
     <div class="card" style="margin-bottom:16px"><form class="form" id="st_form" onsubmit="return false">${fields.map(f => fieldHtml(f, s[f.key])).join('')}</form>
       <div class="btn-row" style="margin-top:16px"><button class="btn primary" id="st_save">Speichern</button></div></div>
     <div class="card" style="margin-bottom:16px"><h2>Webseite</h2>
-      <p class="muted small">Texte der öffentlichen Webseite. Spielplan, Kader, Coaches und Sponsoren kommen automatisch aus dem Hub. Leere Felder erscheinen auf der Seite als gelb markierter Platzhalter. Keine Gedankenstriche verwenden.</p>
-      <form class="form" id="site_form" onsubmit="return false">${SITE_FIELDS.map(f => fieldHtml(f, s[f.key])).join('')}</form>
-      <div class="btn-row" style="margin-top:16px"><button class="btn primary" id="site_save">Webseite speichern</button><a class="btn" href="/" target="_blank" rel="noopener">Webseite ansehen</a></div></div>
+      <p class="muted small">Texte, Bilder und Aufbau der öffentlichen Webseite pflegst du jetzt unter Medien > Webseite.</p>
+      <div class="btn-row"><a class="btn primary" href="#/website">Zur Webseite im Hub</a><a class="btn" href="/" target="_blank" rel="noopener">Webseite ansehen</a></div></div>
     <div class="card"><h2>Datensicherung</h2>
       <p class="muted">Der Server legt jede Nacht automatisch eine Sicherung der Datenbank an. Das Backup-ZIP enthält alle Daten und Bilder, aber keine Passwörter.</p>
       <div class="btn-row"><a class="btn dark" href="/api/backup">Backup herunterladen (ZIP)</a><a class="btn" href="/api/export" download="emden-tigers-hub-export.json">Daten als JSON</a>
@@ -1471,11 +1646,6 @@ App.pages.settings = async (view) => {
   $('#st_save').onclick = async () => {
     App.settings = await api('settings', 'PUT', readForm($('#st_form'), fields));
     applyBranding(); toast('Einstellungen gespeichert');
-  };
-  $('#site_save').onclick = async () => {
-    const vals = readForm($('#site_form'), SITE_FIELDS);
-    if (Object.values(vals).some(hasDashes) && !confirmBox('In den Texten stehen Gedankenstriche. Trotzdem speichern?')) return;
-    App.settings = await api('settings', 'PUT', vals); toast('Webseite gespeichert');
   };
   $('#rs_btn').onclick = () => $('#rs_file').click();
   $('#rs_file').onchange = async e => {

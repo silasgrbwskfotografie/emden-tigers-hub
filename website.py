@@ -5,6 +5,7 @@ public_sponsors) und baut daraus HTML. Kein Datenbankzugriff, keine internen Fel
 Fehlende Inhalte erscheinen als deutlich markierter Platzhalter (Klasse .ph), siehe PLATZHALTER.md.
 """
 import json
+import threading
 from datetime import date, datetime
 from html import escape
 from pathlib import Path
@@ -40,6 +41,36 @@ CONTACT_TOPICS = [("Probetraining Herren", "herren", "Probetraining Herren"), ("
 POS_NAME = {"QB": "Quarterback", "RB": "Runningback", "FB": "Fullback", "WR": "Wide Receiver", "TE": "Tight End", "OL": "Offensive Line",
             "DL": "Defensive Line", "DE": "Defensive End", "LB": "Linebacker", "CB": "Cornerback", "S": "Safety", "K": "Kicker",
             "P": "Punter", "LS": "Long Snapper", "KR/PR": "Returner", "Athlete": "Athlete"}
+# Bilder, die im Hub (Webseite > Bilder) ersetzt werden können: Name -> (Bezeichnung, wo es erscheint)
+IMAGE_SLOTS = {
+    "hero": ("Titelbild Startseite", "Großes Bild ganz oben auf der Startseite, auch Vorschaubild beim Teilen von Links"),
+    "team": ("Teamfoto", "Startseite bei „Wer wir sind“ und Titelbild der Seite Herren"),
+    "spiel": ("Spielszene", "Mannschaftskarte Herren auf der Startseite und Titelbild Spielplan"),
+    "training": ("Training", "Titelbild der Seite Kontakt"),
+    "fans": ("Fans und Gruppenfoto", "Titelbild der Seite Sponsoren"),
+    **{f"galerie-{i}": (f"Galerie {i}", "Instagram-Raster auf der Startseite, solange Instagram nicht verbunden ist") for i in range(1, 7)},
+}
+# Abschnitte der Startseite in der Standard-Reihenfolge (im Hub sortier- und ausblendbar). Titelbild bleibt immer oben.
+START_SECTIONS = {
+    "karten": "Karten: nächstes Spiel, Training, Supporter Karte",
+    "wer": "Wer wir sind",
+    "teams": "Unsere Teams (Herren und Jugend)",
+    "training": "Training und Probetraining",
+    "ergebnisse": "Zuletzt gespielt",
+    "band": "Rotes Band „Lust auf Football?“",
+    "sponsoren": "Unsere Sponsoren",
+    "instagram": "Instagram",
+}
+# Texte, die auf der Webseite als Platzhalter erscheinen, solange sie leer sind (Checkliste im Hub)
+REQUIRED_TEXTS = {
+    "site_contact_email": "Kontakt-E-Mail", "site_hero_text": "Startseite: Satz unter der Überschrift", "site_about": "Startseite: Wer wir sind",
+    "site_training_times": "Training Herren: Zeiten", "site_training_place": "Training Herren: Ort", "site_training_address": "Training Herren: Adresse",
+    "site_trial_text": "Hinweise zum Probetraining", "site_home_address": "Spielplan: Adresse Heimspielort", "site_gameday_text": "Spielplan: Infos zum Spieltag",
+    "site_card_short": "Supporter Karte: Kurztext", "site_card_text": "Supporter Karte: Text", "site_sponsor_text": "Sponsoren: Sponsor werden",
+    "site_youth_text": "Jugend: Vorstellung Flag Football", "site_youth_ages": "Jugend: Alter",
+    "site_youth_training_times": "Training Jugend: Zeiten", "site_youth_training_place": "Training Jugend: Ort",
+}
+_ctx = threading.local()   # eigene Bilder für die gerade gebaute Seite (der Server bearbeitet Anfragen parallel)
 POSITIONS = ["QB", "RB", "FB", "WR", "TE", "OL", "DL", "DE", "LB", "CB", "S", "K", "P", "LS", "KR/PR", "Athlete"]
 COACH_ROLES = ["Headcoach", "Offensive Coordinator", "Defensive Coordinator", "Special Teams Coordinator", "Position Coach", "Teammanager", "Physio", "Equipment"]
 PACKAGES = ["Hauptsponsor", "Trikotsponsor", "Spieltagssponsor", "Supporter Karte", "Medienturm", "Partner", "Förderer"]
@@ -83,24 +114,36 @@ def fmt_date(d, weekday=False):
 # ---------------------------------------------------------------------------
 # Bilder: web/assets/img/<name>-<breite>.webp, Beschreibung in bilder.json
 # ---------------------------------------------------------------------------
-def image_meta():
+def image_meta(standard=False):
+    """Bildbeschreibungen aus bilder.json, darüber die im Hub ersetzten Bilder (mit eigenen Dateien unter "src")."""
     f = IMG / "bilder.json"
     try:
-        return json.loads(f.read_text(encoding="utf-8"))
+        meta = json.loads(f.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return {}
+        meta = {}
+    if not standard:
+        for slot, m in (getattr(_ctx, "images", None) or {}).items():
+            if m.get("src"):
+                meta[slot] = m
+            elif slot in meta and m.get("alt"):   # nur der Alt-Text wurde im Hub geändert
+                meta[slot] = {**meta[slot], "alt": m["alt"]}
+    return meta
 
 
 def picture(name, sizes="100vw", cls="", eager=False, meta=None):
     meta = meta if meta is not None else image_meta()
     m = meta.get(name)
-    widths = [w for w in IMG_WIDTHS if (IMG / f"{name}-{w}.webp").is_file()]
+    if m and m.get("src"):   # im Hub ersetztes Bild
+        files = sorted(m["src"].items())
+    else:
+        files = [(w, f"/web/assets/img/{name}-{w}.webp") for w in IMG_WIDTHS if (IMG / f"{name}-{w}.webp").is_file()]
+    widths = [w for w, _ in files]
     if not m or not widths:
         return f'<div class="img-ph {e(cls)}">{placeholder("Foto " + name)}</div>'
-    srcset = ", ".join(f"/web/assets/img/{name}-{w}.webp {w}w" for w in widths)
-    mid = widths[min(1, len(widths) - 1)]
+    srcset = ", ".join(f"{e(u)} {w}w" for w, u in files)
+    mid = files[min(1, len(files) - 1)][1]
     load = 'fetchpriority="high"' if eager else 'loading="lazy"'   # das erste große Bild sofort, alle anderen erst beim Scrollen
-    return (f'<img class="{e(cls)}" src="/web/assets/img/{name}-{mid}.webp" srcset="{srcset}" sizes="{e(sizes)}" '
+    return (f'<img class="{e(cls)}" src="{e(mid)}" srcset="{srcset}" sizes="{e(sizes)}" '
             f'width="{m.get("w", 1600)}" height="{m.get("h", 1067)}" alt="{e(m.get("alt", ""))}" {load} decoding="async">')
 
 
@@ -112,12 +155,24 @@ def photos(prefix):
 # ---------------------------------------------------------------------------
 # Rahmen: Kopf, Navigation, Fußzeile
 # ---------------------------------------------------------------------------
+def notice_bar(info):
+    """Hinweis-Leiste oben (im Hub unter Webseite > Hinweis), nur bis einschließlich zum eingestellten Datum."""
+    text, link, until = (info.get("site_notice_text") or "").strip(), (info.get("site_notice_link") or "").strip(), info.get("site_notice_until") or ""
+    if not text or (until and until < date.today().isoformat()):
+        return ""
+    ok = link.startswith("/") and not link.startswith("//") or link.startswith(("https://", "http://"))
+    target = "" if link.startswith("/") else ' target="_blank" rel="noopener"'
+    more = f' <a href="{e(link)}"{target}>Mehr erfahren</a>' if ok else ""
+    return f'<div class="notice"><p>{e(text)}{more}</p></div>'
+
+
 def layout(slug, title, description, body, info, extra_head=""):
     club = info.get("club_name") or "Emden Tigers"
     nav = "".join(f'<a href="/{s}" class="{"active" if s == slug else ""}">{e(l)}</a>' for s, l in NAV)
     ig = (info.get("instagram") or "").lstrip("@")
     mail = (info.get("site_contact_email") or "").strip()
-    og_img = "/web/assets/img/hero-1280.webp" if (IMG / "hero-1280.webp").is_file() else "/static/logo.png"
+    hero = image_meta().get("hero") or {}
+    og_img = ((hero.get("src") or {}).get(1280) or ("/web/assets/img/hero-1280.webp" if (IMG / "hero-1280.webp").is_file() else "/static/logo.png"))
     return f"""<!doctype html>
 <html lang="de"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -138,7 +193,7 @@ def layout(slug, title, description, body, info, extra_head=""):
   <label for="menu" class="menu-btn" aria-hidden="true"><span></span><span></span><span></span></label>
   <nav class="site-nav">{nav}</nav>
 </header>
-<main>{body}</main>
+<main>{notice_bar(info)}{body}</main>
 <aside class="site-sponsor" aria-label="Sponsor der Webseite">
   <p class="eyebrow">Diese Webseite wird gesponsert von</p>
   <a class="sp-logo" href="{SITE_SPONSOR['url']}" target="_blank" rel="noopener sponsored"><img src="{asset(SITE_SPONSOR['logo'])}" alt="{e(SITE_SPONSOR['name'])} Logo" width="500" height="150" loading="lazy"></a>
@@ -246,7 +301,7 @@ def team_games(info, games, team, title="Nächste Spiele"):
 # ---------------------------------------------------------------------------
 # Seiten
 # ---------------------------------------------------------------------------
-def page_start(info, games, team, sponsors, insta):
+def page_start(info, games, team, sponsors, insta, layout_order=None):
     meta = image_meta()
     ng = next_game(games)
     played = [g for g in games if g["score_us"] is not None][-3:][::-1]
@@ -258,7 +313,7 @@ def page_start(info, games, team, sponsors, insta):
     next_html = (f"""<p class="eyebrow">Nächstes Spiel</p>{game_card(ng, info, big=True)}
         <p class="countdown"><b>{'Heute' if days == 0 else days}</b>{'' if days == 0 else (' Tag' if days == 1 else ' Tage')}{' bis zum Kickoff' if days else ' ist Gameday'}</p>"""
                  if ng else f'<p class="eyebrow">Nächstes Spiel</p><h3>Termine folgen</h3><p>Der Spielplan der Saison {e(info.get("season"))} steht bald hier.</p>')
-    body = f"""
+    hero = f"""
 <section class="hero">
   {picture("hero", "100vw", "hero-img", eager=True, meta=meta)}
   <div class="hero-text">
@@ -267,29 +322,31 @@ def page_start(info, games, team, sponsors, insta):
     <p class="lead">{text_or_ph(info.get("site_hero_text"), "kurzer Einleitungssatz unter der Überschrift")}</p>
     <div class="btns"><a class="btn red" href="#training">Probetraining</a><a class="btn ghost" href="/spielplan">Spielplan</a></div>
   </div>
-</section>
-<section class="cards wrap">
+</section>"""
+    order = [k for k, visible in (layout_order or [[k, True] for k in START_SECTIONS]) if visible and k in START_SECTIONS]
+    sec = {}
+    sec["karten"] = f"""<section class="cards wrap{'' if order[:1] == ['karten'] else ' cards-flat'}">
   <div class="card next">{next_html}</div>
   <div class="card"><p class="eyebrow">Training Herren</p><h3>Komm vorbei</h3><p>{text_or_ph(info.get("site_training_times"), "Trainingszeiten")}</p>
     <p class="small">{text_or_ph(info.get("site_training_place"), "Trainingsort")}</p><a class="more" href="#training">Alle Infos zum Training</a></div>
   <div class="card"><p class="eyebrow">Supporter Karte {e(info.get("season"))}</p><h3>Sei dabei</h3>
     <p>{text_or_ph(info.get("site_card_short"), "Kurztext Supporter Karte")}</p><a class="more" href="/sponsoren#supporter-karte">Mehr erfahren</a></div>
-</section>
-<section class="split wrap reveal">
+</section>"""
+    sec["wer"] = f"""<section class="split wrap reveal">
   <div class="split-img">{picture("team", "(min-width: 900px) 50vw, 100vw", meta=meta)}</div>
   <div class="split-text"><p class="eyebrow">Wer wir sind</p><h2>{e(info.get("club_name") or "Emden Tigers")}</h2>
     <p>{text_or_ph(info.get("site_about"), "Vereinsvorstellung (ein bis zwei Absätze)")}</p>
     <a class="btn dark" href="/herren">Zum Kader</a></div>
-</section>
-<section class="wrap reveal">{section_head("Mannschaften", "Unsere Teams")}
+</section>"""
+    sec["teams"] = f"""<section class="wrap reveal">{section_head("Mannschaften", "Unsere Teams")}
   <div class="teams">
     <a class="team-card" href="/herren">{picture("spiel", "(min-width: 700px) 50vw, 100vw", meta=meta)}
       <div><p class="eyebrow light">Tackle Football</p><h3>Herren</h3><p>Unser Tackle-Football-Team: volle Ausrüstung, volle Leidenschaft.</p><span class="more">Kader und Coaches</span></div></a>
     <a class="team-card youth" href="/jugend"><div class="team-logo"><img src="/static/logo.png" alt="" width="444" height="276" loading="lazy"></div>
       <div><p class="eyebrow light">Flag Football</p><h3>Next Generation</h3><p>Unsere Jugend: kontaktloser Football für Kinder und Jugendliche.</p><span class="more">Zur Jugend</span></div></a>
   </div>
-</section>
-<section class="wrap reveal" id="training">{section_head("Mitmachen", "Training und Probetraining")}
+</section>"""
+    sec["training"] = f"""<section class="wrap reveal" id="training">{section_head("Mitmachen", "Training und Probetraining")}
   <p class="intro-text">Bei den Tigers kannst du jederzeit reinschnuppern. Such dir die passende Mannschaft aus, komm zum Training und lern das Team kennen.
   Ob du schon Football gespielt hast oder den Sport erst entdecken willst: Wir freuen uns auf dich.</p>
   <div class="split-info three">{herren_training_cards(info)}{youth_training_card(info)}</div>
@@ -297,20 +354,21 @@ def page_start(info, games, team, sponsors, insta):
     <p>{text_or_ph(info.get("site_trial_text"), "Hinweise zum Probetraining (was mitbringen, Alter, Ausrüstung)")}</p>
     <div class="btns"><a class="btn red" href="/kontakt?anliegen=herren#formular">Probetraining Herren anfragen</a><a class="btn dark" href="/kontakt?anliegen=jugend#formular">Probetraining Jugend anfragen</a></div>
   </div>
-</section>
-{f'''<section class="wrap reveal">{section_head("Ergebnisse", "Zuletzt gespielt", '<a class="more" href="/spielplan">Ganzer Spielplan</a>')}
-  <div class="games">{"".join(game_card(g, info) for g in played)}</div></section>''' if played else ''}
-<section class="band reveal">
+</section>"""
+    sec["ergebnisse"] = (f'''<section class="wrap reveal">{section_head("Ergebnisse", "Zuletzt gespielt", '<a class="more" href="/spielplan">Ganzer Spielplan</a>')}
+  <div class="games">{"".join(game_card(g, info) for g in played)}</div></section>''' if played else '')
+    sec["band"] = """<section class="band reveal">
   <div class="wrap band-in"><div><p class="eyebrow light">Probetraining</p><h2>Lust auf Football?</h2>
     <p>Komm zu einem Training vorbei oder schreib uns vorher eine Nachricht.</p></div>
     <a class="btn red" href="/kontakt#formular">Jetzt anfragen</a></div>
-</section>
-{f'''<section class="wrap reveal">{section_head("Partner", "Unsere Sponsoren", '<a class="more" href="/sponsoren">Alle Sponsoren</a>')}
-  <div class="logos">{"".join(sponsor_tile(s) for s in sponsors[:8])}</div></section>''' if sponsors else ''}
-<section class="wrap reveal">{section_head("Instagram", "@" + ig)}
+</section>"""
+    sec["sponsoren"] = (f'''<section class="wrap reveal">{section_head("Partner", "Unsere Sponsoren", '<a class="more" href="/sponsoren">Alle Sponsoren</a>')}
+  <div class="logos">{"".join(sponsor_tile(s) for s in sponsors[:8])}</div></section>''' if sponsors else '')
+    sec["instagram"] = f"""<section class="wrap reveal">{section_head("Instagram", "@" + ig)}
   <div class="insta">{"".join(tiles[:6]) or placeholder("Fotos für das Raster")}</div>
   <p class="center"><a class="btn dark" href="https://www.instagram.com/{ig}/" target="_blank" rel="noopener">Folge uns auf Instagram</a></p>
 </section>"""
+    body = hero + "\n".join(sec[k] for k in order)
     return layout("", "", "Die Emden Tigers sind die American-Football-Sparte des SV Amisia Stern Wolthusen in Emden. Training, Herren, Jugend, Spielplan und Sponsoren.", body, info)
 
 
@@ -457,9 +515,18 @@ PAGES = ("", "herren", "jugend", "spielplan", "sponsoren", "kontakt", "impressum
 
 
 def render(slug, data, sent=None):
+    site = data.get("site") or {}
+    _ctx.images = site.get("images") or {}
+    try:
+        return render_page(slug, data, sent, site)
+    finally:
+        _ctx.images = {}
+
+
+def render_page(slug, data, sent, site):
     info = data["info"]
     if slug == "":
-        return page_start(info, data["games"], data["team"], data["sponsors"], data.get("instagram") or [])
+        return page_start(info, data["games"], data["team"], data["sponsors"], data.get("instagram") or [], site.get("layout"))
     if slug == "herren":
         return page_herren(info, data["team"], data["games"])
     if slug == "jugend":

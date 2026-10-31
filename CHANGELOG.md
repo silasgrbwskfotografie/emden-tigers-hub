@@ -13,6 +13,12 @@
   - Spieler der Next Generation erscheinen nie öffentlich, nur Coaches und Staff
   - Alle Webseiten-Texte vorformuliert (einmalig in noch leere Felder bestehender Server übernommen)
   - Über dem Footer: Sponsor der Webseite (silasgrbwsk.fotografie), im Footer das Wappen des SV Amisia mit Link
+- Neu im Hub unter Medien: Webseite
+  - Übersicht mit Checkliste (fehlende Texte, Spieler ohne Foto-Einwilligung, Gegner und Sponsoren ohne Logo, Instagram nicht verbunden)
+  - Texte nach Seiten sortiert, Bilder ersetzen (der Browser erzeugt WebP in drei Größen) mit Alt-Text, zurück zum Standardbild
+  - Aufbau der Startseite: Abschnitte sortieren und ausblenden
+  - Hinweis-Leiste oben auf jeder Seite mit Link und Ablaufdatum
+  - Vorschau als Handy, Tablet oder Desktop
 - Hub zieht nach `/hub` (nur mit Login), Weiterleitungen, App, Mails und alte Lesezeichen angepasst
 - Kader und Spielplan: Feld „Mannschaft“ mit Filter (Herren, Next Generation)
 - Öffentliche Schnittstelle `/api/public` mit festen Feldern, Anfragen aus dem Kontaktformular unter Mitglieder > Anfragen (mit Benachrichtigung)

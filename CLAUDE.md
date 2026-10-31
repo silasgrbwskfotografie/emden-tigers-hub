@@ -24,6 +24,10 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
   Seiten: Start (mit Training und Probetraining), Herren (Kader nach Offense/Defense, Position unter dem Namen, dann Coaches), Jugend, Spielplan, Sponsoren, Kontakt.
   Kontaktformular mit Anliegen `CONTACT_TOPICS` (server.py und website.py gleich halten), Vorauswahl per `/kontakt?anliegen=herren|jugend|sponsoring|frage`.
   Standardtexte `site_*` in `DEFAULT_SETTINGS`; neue Texte für bestehende Server: `SITE_TEXTS_VERSION` erhöhen (füllt nur leere Felder).
+  Webseite im Hub (`#/website`, Bereich Medien: Lesen 1, Ändern 2): `/api/website` (GET Übersicht mit Checkliste, PUT `texts` nur `site_*` und `layout`),
+  `/api/website/image/<slot>` (POST WebP-Dateien vom Browser, nur `website.IMAGE_SLOTS`, Prüfung auf RIFF/WEBP, PUT Alt-Text, DELETE = Standardbild).
+  Eigene Bilder in `data/site`, ausgeliefert unter `/web/site/<datei>.webp`; Beschreibung und Aufbau in den Einstellungen `web_images`, `web_layout` (nicht öffentlich).
+  Abschnitte der Startseite: `website.START_SECTIONS`. Öffentliche Seiten senden `X-Frame-Options: SAMEORIGIN` (Vorschau im Hub), alles andere `DENY`.
   Fehlende Inhalte als `placeholder()` (gelb markiert) und in `PLATZHALTER.md` eintragen, nie erfinden.
 - `static/`: Frontend des Hubs ohne Build-Schritt (Vanilla JS, eine Seite mit Hash-Router, ausgeliefert unter `/hub`).
   - `app.js`: API-Helfer, Router, Formular-Generator (`editRecord`, `fieldHtml`), Rechte-Hilfen (`can`, `PAGE_AREA`, `applyPermissions`).
@@ -46,7 +50,7 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
 
 ## Sicherheit (nicht aufweichen)
 
-- Ohne Sitzung erreichbar: die Webseite (`/`, `/herren`, `/jugend`, `/spielplan`, `/sponsoren`, `/kontakt`, `/impressum`, `/datenschutz`, alte Adressen `/team`, `/next-generation`, `/probetraining` als 301 in `website.REDIRECTS`, `/web/assets/...`, `/web/insta/...`, `/api/public/...`, `POST /kontakt`),
+- Ohne Sitzung erreichbar: die Webseite (`/`, `/herren`, `/jugend`, `/spielplan`, `/sponsoren`, `/kontakt`, `/impressum`, `/datenschutz`, alte Adressen `/team`, `/next-generation`, `/probetraining` als 301 in `website.REDIRECTS`, `/web/assets/...`, `/web/insta/...`, `/web/site/...`, `/api/public/...`, `POST /kontakt`),
   `/login`, `/setup`, `/invite`, `/passwort-vergessen`, `/passwort-neu`, `/healthz`, `/bestellen`, `/teilen`, `/manifest.webmanifest`, `/sw.js`, `style.css`, `logo.png`, `icon.png`, `icon-192.png`, `icon-512.png`.
   Alles unter `/hub`, `/static`, `/media` und `/api` (außer `/api/public`) braucht eine Sitzung.
 - Webseite: keine externen Schriften, Tracker oder Einbettungen. Einzige Ausnahme sind die Rechtstexte der IT-Recht Kanzlei auf `/impressum` und `/datenschutz`.
