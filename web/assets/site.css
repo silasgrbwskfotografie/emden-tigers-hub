@@ -132,10 +132,41 @@ p { margin: 0 0 1em; }
   font: 400 20px/1.1 var(--head); text-transform: uppercase; text-align: center; box-shadow: 0 6px 18px rgba(0,0,0,.06); transition: transform .2s; }
 .logo-tile:hover { transform: translateY(-3px); }
 .logo-tile img { max-height: 80px; width: auto; object-fit: contain; }
-.insta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 24px; }
+.insta { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin-bottom: 24px; }
+.insta a:nth-child(n+4) { display: none; }   /* Handy: die 3 neuesten untereinander */
 .insta a { display: block; overflow: hidden; aspect-ratio: 1; background: #222; }
 .insta img { width: 100%; height: 100%; object-fit: cover; transition: transform .5s; }
 .insta a:hover img { transform: scale(1.06); }
+
+/* Mannschaften */
+.teams { display: grid; gap: 16px; }
+.team-card { position: relative; display: grid; min-height: 320px; border-radius: 4px; overflow: hidden; color: #fff; text-decoration: none; background: var(--black); box-shadow: 0 18px 40px rgba(0,0,0,.15); }
+.team-card > img, .team-card > .team-logo, .team-card > .img-ph { grid-area: 1 / 1; width: 100%; height: 100%; object-fit: cover; transition: transform .6s; }
+.team-card > div:last-child { grid-area: 1 / 1; align-self: end; position: relative; z-index: 1; padding: 24px; background: linear-gradient(180deg, transparent, rgba(0,0,0,.85)); }
+.team-card h3 { font-size: clamp(32px, 8vw, 48px); margin-bottom: 6px; }
+.team-card p { margin-bottom: 12px; }
+.team-card .more { color: #fff; }
+.team-card:hover > img { transform: scale(1.05); }
+.team-card.youth { background: var(--red) linear-gradient(115deg, transparent 0 58%, rgba(0,0,0,.2) 58% 100%); }
+.team-card.youth > div:last-child { background: none; }
+.team-logo { display: grid; place-items: start center; padding-top: 34px; }
+.team-logo img { width: min(220px, 60%); height: auto; }
+.intro { padding-bottom: 0; font-size: 18px; }
+.jump { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn.ghost-dark { border-color: var(--black); color: var(--black); }
+.btn.ghost-dark:hover { background: var(--black); color: #fff; }
+.tag.team { background: var(--black); }
+.youth-hero { min-height: 52svh; background: var(--red) linear-gradient(115deg, transparent 0 55%, rgba(0,0,0,.22) 55% 100%); }
+.youth-hero::before { display: none; }
+.youth-hero .btn.red { background: var(--black); }
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.facts div { background: var(--black); color: #fff; border-radius: 4px; padding: 18px; }
+.facts b { display: block; font: 400 22px/1.1 var(--head); text-transform: uppercase; color: #fff; margin-bottom: 6px; }
+.facts span { font-size: 15px; color: #ccc; }
+.choice { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.choice legend { font-weight: 700; font-size: 15px; margin-bottom: 6px; padding: 0; }
+.contact .choice label { display: flex; align-items: center; gap: 8px; font-weight: 400; }
+.contact .choice input { width: 20px; height: 20px; accent-color: var(--red); }
 
 /* Infokarten, Formular, Rechtliches */
 .split-info { display: grid; gap: 16px; }
@@ -170,7 +201,9 @@ p { margin: 0 0 1em; }
 .site-foot h4 { color: #fff; font-size: 18px; letter-spacing: 1px; }
 .foot-grid { width: min(var(--wrap), 100% - 32px); margin: 0 auto; display: grid; gap: 28px; }
 .foot-logo { height: 54px; width: auto; margin-bottom: 14px; }
-.crest { margin-top: 10px; }
+.crest { display: inline-block; margin-top: 10px; transition: transform .2s; }
+.crest img { height: 64px; width: auto; }
+.crest:hover { transform: scale(1.05); }
 .members { opacity: .7; font-size: 14px; }
 .copy { width: min(var(--wrap), 100% - 32px); margin: 32px auto 0; padding-top: 18px; border-top: 1px solid #222; font-size: 13px; color: #888; }
 
@@ -184,7 +217,10 @@ p { margin: 0 0 1em; }
   .people { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .logos { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .insta { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .insta a:nth-child(n+4) { display: block; }
   .split-info { grid-template-columns: 1fr 1fr; }
+  .teams { grid-template-columns: 1fr 1fr; }
+  .team-card { min-height: 420px; }
   .foot-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (min-width: 960px) {
@@ -192,8 +228,9 @@ p { margin: 0 0 1em; }
   .site-head { padding: 0 max(24px, calc((100% - var(--wrap)) / 2)); }
   .brand img { height: 48px; }
   .menu-btn { display: none; }
-  .site-nav { position: static; transform: none; flex-direction: row; gap: 28px; padding: 0; background: none; z-index: auto; }
-  .site-nav a { border: 0; padding: 6px 0; font-size: 13px; border-bottom: 2px solid transparent; }
+  .site-nav { position: static; transform: none; flex-direction: row; gap: 18px; padding: 0; background: none; z-index: auto; }
+  .site-nav a { border: 0; padding: 6px 0; font-size: 12px; letter-spacing: 1.5px; border-bottom: 2px solid transparent; }
+  .split-info.three { grid-template-columns: repeat(3, 1fr); }
   .site-nav a.active { color: #fff; border-bottom-color: var(--red); }
   .wrap { padding: 80px 0; }
   .cards { grid-template-columns: 1.3fr 1fr 1fr; margin-top: -110px; }
@@ -203,4 +240,8 @@ p { margin: 0 0 1em; }
   .logos { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .band-in { grid-template-columns: 1fr auto; }
   .foot-grid { grid-template-columns: 1.4fr 1fr 1fr 1fr; }
+}
+@media (min-width: 1160px) {
+  .site-nav { gap: 26px; }
+  .site-nav a { font-size: 13px; letter-spacing: 2px; }
 }

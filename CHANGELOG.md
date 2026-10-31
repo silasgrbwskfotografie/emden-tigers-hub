@@ -5,7 +5,13 @@
   - Aufbau angelehnt an silasgrbwskfotografie.de, Grafikstil der Vereinsposts (Anton, Rot und Schwarz), mobile first, ohne JavaScript-Pflicht
   - Spielplan, Kader, Coaches und Sponsoren kommen live aus dem Hub, Spielerfotos nur mit Einwilligung, Texte unter Einstellungen > Webseite
   - Lokale Schriften, keine Tracker oder Einbettungen, Fotos von silasgrbwsk.fotografie als WebP in drei Größen
+  - Instagram-Raster mit den 6 neuesten Beiträgen (Handy: 3 untereinander), über die Meta-Verbindung alle 30 Minuten geholt und lokal gespeichert, ohne Verbindung eigene Fotos
+  - Zwei Mannschaften: Herren und Next Generation (Flag-Jugend) mit eigener Seite, getrennt auf Team, Spielplan und Probetraining (Formular mit Auswahl der Mannschaft)
+  - Spieler der Next Generation erscheinen nie öffentlich, nur Coaches und Staff
+  - Alle Webseiten-Texte vorformuliert (einmalig in noch leere Felder bestehender Server übernommen)
+  - Über dem Footer: Sponsor der Webseite (silasgrbwsk.fotografie), im Footer das Wappen des SV Amisia mit Link
 - Hub zieht nach `/hub` (nur mit Login), Weiterleitungen, App, Mails und alte Lesezeichen angepasst
+- Kader und Spielplan: Feld „Mannschaft“ mit Filter (Herren, Next Generation)
 - Öffentliche Schnittstelle `/api/public` mit festen Feldern, Anfragen aus dem Kontaktformular unter Mitglieder > Anfragen (mit Benachrichtigung)
 - Domain nur noch über `DOMAIN` in der `.env`, HTTPS mit Let's Encrypt als vorbereiteter Schritt in INSTALLATION.md
 

@@ -70,6 +70,10 @@ MEDIA = DATA / "media"
 DB_PATH = DATA / "tigers.db"
 BACKUPS = DATA / "backups"
 
+# Mannschaften (players.team, games.team). Gleiche Liste in static/pages.js (TEAMS) und website.py.
+TEAMS = ("Herren", "Next Generation")
+YOUTH_TEAM = "Next Generation"   # Flag-Jugend: Spieler (Minderjährige) erscheinen nie auf der Webseite
+
 # ---------------------------------------------------------------------------
 # Datenbank-Schema
 # Jede Tabelle: Spaltenname -> SQL-Typ. "id" wird automatisch angelegt.
@@ -95,6 +99,7 @@ TABLES = {
         "facts": "TEXT",                        # Funfacts / Football-Geschichte
         "notes": "TEXT",
         "source": "TEXT",                       # z. B. "Tabelle", wenn aus Google Sheets angelegt
+        "team": "TEXT DEFAULT 'Herren'",        # Mannschaft (TEAMS)
     },
     "opponents": {
         "name": "TEXT",
@@ -119,6 +124,7 @@ TABLES = {
         "sponsor_id": "INTEGER",
         "highlights": "TEXT",
         "notes": "TEXT",
+        "team": "TEXT DEFAULT 'Herren'",
     },
     "sponsors": {
         "name": "TEXT",
@@ -351,19 +357,37 @@ DEFAULT_SETTINGS = {
     "media_tasks": "Feldrand / Live-Storys\nFotos\nMedienzelt / Livestream\nVideo / Clips",
     # Öffentliche Webseite (Einstellungen > Webseite). Leere Texte erscheinen dort als markierter Platzhalter.
     "site_hero_title": "",
-    "site_hero_text": "",
-    "site_about": "",
+    "site_hero_text": "American Football aus Emden. Wir sind die Tigers: ein Team aus Ostfriesland mit Herzblut, Teamgeist und richtig Lust auf Football.",
+    "site_about": "Die Emden Tigers sind die American-Football-Sparte des SV Amisia Stern Wolthusen. Bei uns stehen Menschen aus Emden "
+                  "und ganz Ostfriesland gemeinsam auf dem Feld, mit ganz unterschiedlichen Geschichten, Berufen und Erfahrungen. "
+                  "Was uns verbindet, ist die Leidenschaft für den Sport und der Zusammenhalt im Team.\n\n"
+                  "Neben unseren Herren spielen bei der Next Generation Kinder und Jugendliche Flag Football. Auf dem Feld geben wir alles, "
+                  "daneben sind wir eine große Familie aus Spielern, Coaches, Helfern und Fans.",
     "site_training_times": "Dienstag 20:30 bis 22:00 Uhr\nDonnerstag 19:00 bis 21:00 Uhr",
     "site_training_place": "Kunstrasen Eintracht Emden JFV e. V.",
     "site_training_address": "Pillauer Str. 12, 26725 Emden",
-    "site_trial_text": "",
+    "site_trial_text": "Du willst Football ausprobieren? Dann komm einfach zu einem Training vorbei. Für den Anfang reichen Sportkleidung, "
+                       "Fußball- oder Turnschuhe und etwas zu trinken. Am besten schreibst du uns vorher kurz über das Formular, "
+                       "dann wissen wir Bescheid und nehmen dich am Platz in Empfang.",
     "site_home_address": "",
-    "site_gameday_text": "",
-    "site_card_short": "",
-    "site_card_text": "",
-    "site_sponsor_text": "",
+    "site_gameday_text": "An Heimspieltagen freuen wir uns über jede Unterstützung an der Seitenlinie. Bring Familie und Freunde mit, "
+                         "feuer die Tigers an und erlebe American Football aus nächster Nähe. Aktuelle Infos zum Spieltag findest du vorher auf Instagram.",
+    "site_card_short": "Unterstütze die Tigers eine ganze Saison lang und zeig, dass du hinter dem Team stehst.",
+    "site_card_text": "Mit der Supporter Karte unterstützt du die Emden Tigers eine ganze Saison lang und zeigst, dass du hinter dem Team stehst. "
+                      "Alle Infos zur Karte bekommst du bei uns über das Kontaktformular oder per Nachricht auf Instagram.",
+    "site_sponsor_text": "Ohne unsere Partner wäre Football in Emden nicht möglich. Sie machen Trainingsbetrieb, Ausrüstung und Spieltage erst möglich. "
+                         "Du möchtest die Tigers mit deinem Unternehmen unterstützen? Wir stellen gern ein Paket zusammen, das zu dir passt, "
+                         "vom Spieltagssponsor bis zum Trikotsponsor. Schreib uns einfach über das Kontaktformular.",
     "site_contact_email": "",
+    "site_youth_text": "Flag Football ist die kontaktlose Variante des American Football. Statt zu tackeln, ziehen die Spieler dem ballführenden "
+                       "Gegner ein Fähnchen vom Gürtel. So lernen Kinder und Jugendliche Werfen, Fangen, Laufen und Taktik, ganz ohne harte "
+                       "Zweikämpfe und ohne schwere Ausrüstung.\n\nBei der Next Generation der Emden Tigers stehen Spaß, Bewegung und Teamgeist "
+                       "an erster Stelle. Vorkenntnisse braucht niemand, Mädchen und Jungen sind gleichermaßen willkommen.",
+    "site_youth_ages": "",
+    "site_youth_training_times": "",
+    "site_youth_training_place": "",
 }
+SITE_TEXTS_VERSION = "1"   # erhöhen, wenn neue Standardtexte in leere Felder bestehender Server übernommen werden sollen
 
 
 DB_LOCK = threading.RLock()   # exklusiv beim Einspielen eines Backups
@@ -475,6 +499,12 @@ def init_db():
         conn.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
         for k, v in DEFAULT_SETTINGS.items():
             conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
+        # Webseiten-Texte: neue Standardtexte einmalig in noch leere Felder übernehmen (eigene Texte bleiben unberührt)
+        if get_setting(conn, "site_texts_version") != SITE_TEXTS_VERSION:
+            for k, v in DEFAULT_SETTINGS.items():
+                if k.startswith("site_") and v:
+                    conn.execute("UPDATE settings SET value=? WHERE key=? AND TRIM(IFNULL(value,''))=''", (v, k))
+            set_setting(conn, "site_texts_version", SITE_TEXTS_VERSION)
         # Coaches-Blatt gibt es nicht mehr: alles steht im Blatt "Spieler"
         conn.execute("UPDATE settings SET value='0' WHERE key='sheet_gids' AND value='0,1'")
 
@@ -750,6 +780,7 @@ def clean_order(fields, data, qty):
 # Instagram holt Bilder selbst ab, dafür gibt es signierte Links /teilen/<sig>/<datei> (nur Bilder).
 # ---------------------------------------------------------------------------
 mimetypes.add_type("application/manifest+json", ".webmanifest")
+mimetypes.add_type("image/webp", ".webp")   # fehlt in manchen Systemen (Webseite, Instagram-Bilder)
 GRAPH = ENV("TMH_GRAPH_URL") or "https://graph.facebook.com/v26.0"   # Variable nur für lokale Tests mit einem Test-Server
 SOCIAL_LOCK = threading.Lock()
 POST_LATE_HOURS = 24        # freigegebene Posts, die länger überfällig sind, werden nicht mehr nachgeholt
@@ -816,7 +847,7 @@ def public_games():
         o = opp.get(g["opponent_id"])
         played = g["score_us"] not in (None, "") and g["score_them"] not in (None, "")
         out.append({
-            "season": g["season"] or "", "date": g["date"], "time": g["time"] or "", "home": bool(g["home"]), "kind": g["kind"] or "",
+            "team": g["team"] if g["team"] in TEAMS else "Herren", "season": g["season"] or "", "date": g["date"], "time": g["time"] or "", "home": bool(g["home"]), "kind": g["kind"] or "",
             "league": g["league"] or "", "location": g["location"] or (home_loc if g["home"] else ""),
             "opponent": {"name": o["name"] or "", "short": o["short"] or "", "city": o["city"] or "", "logo": public_image(o["logo"], key)} if o else None,
             "score_us": g["score_us"] if played else None, "score_them": g["score_them"] if played else None,
@@ -826,14 +857,18 @@ def public_games():
 
 
 def public_team():
-    """Alle aktiven Spieler und Coaches; Foto nur mit Einwilligung (players.consent)."""
+    """Alle aktiven Spieler und Coaches; Foto nur mit Einwilligung (players.consent).
+    Next Generation (Kinder und Jugendliche): nur Coaches und Staff, keine Spieler."""
     key = social_config()["share_key"]
     with db() as conn:
         rows = conn.execute("SELECT * FROM players WHERE active=1").fetchall()
     out = []
     for p in rows:
+        team = p["team"] if p["team"] in TEAMS else "Herren"
+        if team == YOUTH_TEAM and (p["kind"] or "Spieler") == "Spieler":
+            continue
         out.append({
-            "kind": p["kind"] or "Spieler", "first_name": p["first_name"] or "", "last_name": p["last_name"] or "",
+            "team": team, "kind": p["kind"] or "Spieler", "first_name": p["first_name"] or "", "last_name": p["last_name"] or "",
             "number": p["number"] or "", "position": p["position"] or "", "unit": p["unit"] or "", "role": p["role"] or "",
             "photo": public_image(p["photo"], key) if p["consent"] else "",
         })
@@ -1222,6 +1257,75 @@ def social_online(cfg):
                 item[d.get("name")] = ((d.get("values") or [{}])[0]).get("value", (d.get("total_value") or {}).get("value"))
             out["instagram_stories"].append(item)
     return out
+
+
+# Neueste Instagram-Beiträge für die Webseite: der Server holt sie über die Meta-Verbindung
+# und speichert die Bilder lokal (data/instagram), Besucher laden nichts von Meta.
+INSTA_DIR = DATA / "instagram"
+INSTA_FEED = DATA / "instagram.json"
+INSTA_REFRESH_SECONDS = 1800
+INSTA_LOCK = threading.Lock()
+INSTA_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+
+
+def insta_refresh():
+    if not INSTA_LOCK.acquire(blocking=False):
+        return
+    try:
+        cfg = social_config()
+        if not (cfg["fb_token"] and cfg["ig_user_id"]):
+            return
+        r = graph("GET", f"{cfg['ig_user_id']}/media", {"fields": "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp", "limit": 12}, cfg["fb_token"])
+        INSTA_DIR.mkdir(parents=True, exist_ok=True)
+        items = []
+        for m in r.get("data", []):
+            mid, src, link = str(m.get("id", "")), m.get("thumbnail_url") or m.get("media_url") or "", m.get("permalink") or ""
+            if not mid.isalnum() or not src or not link.startswith(("https://www.instagram.com/", "https://instagram.com/")):
+                continue
+            old = next(INSTA_DIR.glob(mid + ".*"), None)
+            if old is None:
+                try:
+                    with urllib.request.urlopen(src, timeout=30) as resp:
+                        ext = INSTA_TYPES.get((resp.headers.get("Content-Type") or "").split(";")[0].strip())
+                        data = resp.read(8_000_001)
+                except (urllib.error.URLError, OSError, ValueError):
+                    continue
+                if not ext or len(data) > 8_000_000:
+                    continue
+                old = INSTA_DIR / (mid + ext)
+                old.write_bytes(data)
+            caption = " ".join((m.get("caption") or "").split("\n")[0].split())
+            items.append({"image": f"/web/insta/{old.name}", "url": link, "alt": caption[:120] or "Instagram-Beitrag der Emden Tigers"})
+            if len(items) == 6:
+                break
+        keep = {i["image"].rsplit("/", 1)[-1] for i in items}
+        for f in INSTA_DIR.iterdir():
+            if f.name not in keep:
+                f.unlink(missing_ok=True)
+        INSTA_FEED.write_text(json.dumps({"fetched": time.time(), "items": items}), encoding="utf-8")
+    except (GraphError, OSError, ValueError) as e:
+        print("Instagram für die Webseite nicht geladen:", e)
+        try:   # nicht bei jedem Seitenaufruf neu versuchen
+            INSTA_FEED.write_text(json.dumps({**public_instagram_raw(), "fetched": time.time()}), encoding="utf-8")
+        except OSError:
+            pass
+    finally:
+        INSTA_LOCK.release()
+
+
+def public_instagram_raw():
+    try:
+        return json.loads(INSTA_FEED.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"fetched": 0, "items": []}
+
+
+def public_instagram():
+    """Bis zu 6 neueste Instagram-Bilder (lokal gespeichert), veraltet: im Hintergrund neu laden."""
+    feed = public_instagram_raw()
+    if time.time() - feed.get("fetched", 0) > INSTA_REFRESH_SECONDS:
+        threading.Thread(target=insta_refresh, daemon=True).start()
+    return [{"image": i["image"], "url": i["url"], "alt": i["alt"]} for i in feed.get("items", []) if (INSTA_DIR / i["image"].rsplit("/", 1)[-1]).is_file()]
 
 
 # ---------------------------------------------------------------------------
@@ -2221,6 +2325,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_site(head)
         if method == "GET" and p[:2] == ["web", "assets"]:
             return self.serve_under(website.WEB / "assets", p[2:], cache=True)
+        if method == "GET" and p[:2] == ["web", "insta"] and len(p) == 3:
+            return self.serve_under(INSTA_DIR, p[2:], cache=True)
         if method == "GET" and head not in ("hub", "static", "media", "api"):
             return self.send_site("404", 404)
 
@@ -2254,8 +2360,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def send_site(self, slug, status=200):
         """Seite der öffentlichen Webseite aus den öffentlichen Daten bauen."""
-        data = {"info": public_info(), "games": public_games(), "team": public_team(), "sponsors": public_sponsors()}
-        sent = (parse_qs(urlparse(self.path).query).get("gesendet") or [None])[0]
+        data = {"info": public_info(), "games": public_games(), "team": public_team(), "sponsors": public_sponsors(),
+                "instagram": public_instagram() if slug == "" else []}
+        q = parse_qs(urlparse(self.path).query)
+        sent = (q.get("gesendet") or [None])[0]
+        data["preselect"] = (q.get("mannschaft") or [""])[0]   # Vorauswahl im Kontaktformular (website.py prüft den Wert)
         return self.send_html(website.render(slug, data, sent), status)
 
     # -- Anmeldung --------------------------------------------------------
@@ -2397,6 +2506,7 @@ class Handler(BaseHTTPRequestHandler):
         if not reset_rate_ok("ip", "kontakt:" + self.client_ip()):
             return back("fehler")
         name, email, phone, msg = f.get("name", "")[:100], f.get("email", "")[:150], f.get("phone", "")[:40], f.get("message", "")[:3000]
+        source = "Probetraining " + f["team"] if f.get("team") in TEAMS else "Probetraining"
         if not name or not msg or f.get("consent") != "1" or not (email or phone):
             return back("fehler")
         if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
@@ -2404,10 +2514,10 @@ class Handler(BaseHTTPRequestHandler):
         now = datetime.now().isoformat(timespec="seconds")
         with db() as conn:
             cur = conn.execute("INSERT INTO contact_requests (name, email, phone, message, source, status, created, created_at, updated_at) "
-                               "VALUES (?, ?, ?, ?, 'Probetraining', 'Neu', ?, ?, ?)", (name, email, phone, msg, now, now, now))
+                               "VALUES (?, ?, ?, ?, ?, 'Neu', ?, ?, ?)", (name, email, phone, msg, source, now, now, now))
             audit(conn, "Webseite", "neu", "contact_requests", cur.lastrowid, name)
             to = get_setting(conn, "site_contact_email")
-        text = f"Neue Anfrage über die Webseite (Probetraining)\n\nName: {name}\nE-Mail: {email or '-'}\nTelefon: {phone or '-'}\n\n{msg}"
+        text = f"Neue Anfrage über die Webseite ({source})\n\nName: {name}\nE-Mail: {email or '-'}\nTelefon: {phone or '-'}\n\n{msg}"
         cfg = smtp_config()
         if to and cfg["smtp_host"]:
             threading.Thread(target=lambda: send_mail(cfg, to, f"Webseite: Anfrage von {name}", text, footer=False), daemon=True).start()

@@ -9,7 +9,11 @@ const SOCIAL_TARGETS = ['Facebook', 'Instagram', 'Facebook + Instagram'];
 const PUBLISH_STATE = { '': ['Auto: wartet', 'red'], 'läuft': ['Auto: läuft', 'warn'], gepostet: ['Auto: gepostet', 'ok'],
   teilweise: ['Auto: teilweise', 'warn'], fehler: ['Auto: Fehler', 'warn'], verpasst: ['Auto: verpasst', 'warn'] };
 const publishBadge = p => Number(p.auto_publish) || p.publish_state ? `<span class="badge ${PUBLISH_STATE[p.publish_state || '']?.[1] || ''}" title="${esc(p.publish_log || '')}">${PUBLISH_STATE[p.publish_state || '']?.[0] || esc(p.publish_state)}</span>` : '';
-const SPONSOR_PACKAGES = ['Hauptsponsor', 'Trikotsponsor', 'Spieltagssponsor', 'Supporter Karte', 'Medienturm', 'Partner', 'Förderer'];
+const TEAMS = ['Herren', 'Next Generation'];   // gleiche Liste in server.py (TEAMS)
+const teamOf = r => TEAMS.includes(r.team) ? r.team : 'Herren';
+const teamBadge = r => teamOf(r) !== 'Herren' ? `<span class="badge red">${esc(teamOf(r))}</span>` : '';
+const teamBar = (cur, attr) => TEAMS.length > 1 ? ['Alle Mannschaften', ...TEAMS].map(t => `<button class="btn sm ${t === cur ? 'dark' : ''}" ${attr}="${esc(t)}">${esc(t)}</button>`).join('') : '';
+const SPONSOR_PACKAGES =['Hauptsponsor', 'Trikotsponsor', 'Spieltagssponsor', 'Supporter Karte', 'Medienturm', 'Partner', 'Förderer'];
 
 const oppLabel = o => o.name || '';
 const sponsorLabel = s => s.name || '';
@@ -19,6 +23,7 @@ const gameLabel = g => `${fmtDate(g.date)} ${Number(g.home) ? 'vs' : '@'} ${byId
 const F = {
   players: [
     { key: 'kind', label: 'Art', type: 'select', options: ['Spieler', 'Coach', 'Staff'] },
+    { key: 'team', label: 'Mannschaft', type: 'select', options: TEAMS, default: 'Herren', hint: 'Spieler der Next Generation erscheinen nie auf der Webseite, nur Coaches und Staff.' },
     { key: 'active', label: 'Aktiv im Team', type: 'check', default: 1 },
     { key: 'first_name', label: 'Vorname' },
     { key: 'last_name', label: 'Nachname' },
@@ -44,6 +49,7 @@ const F = {
   ],
   games: () => [
     { key: 'season', label: 'Saison', default: App.settings.season },
+    { key: 'team', label: 'Mannschaft', type: 'select', options: TEAMS, default: 'Herren' },
     { key: 'kind', label: 'Art', type: 'select', options: ['Liga', 'Freundschaftsspiel', 'Turnier', 'Playoff', 'Sonstiges'] },
     { key: 'date', label: 'Datum', type: 'date' },
     { key: 'time', label: 'Kickoff', type: 'time' },
@@ -567,15 +573,16 @@ async function assignGame(gameId) {
 App.pages.games = async (view) => {
   await loadAll('games', 'opponents', 'sponsors', 'assignments', 'posts');
   const seasons = [...new Set([App.settings.season, ...App.cache.games.map(g => g.season)].filter(Boolean))].sort().reverse();
-  let season = App._season || App.settings.season;
+  let season = App._season || App.settings.season, team = App._gteam || 'Alle Mannschaften';
   const tasks = mediaTasks();
   const draw = () => {
-    App._season = season;
-    const list = App.cache.games.filter(g => season === 'alle' || (g.season || '') == season).sort((a, b) => ((a.date || '') + (a.time || '')).localeCompare((b.date || '') + (b.time || '')));
+    App._season = season; App._gteam = team;
+    const list = App.cache.games.filter(g => (season === 'alle' || (g.season || '') == season) && (team === 'Alle Mannschaften' || teamOf(g) === team)).sort((a, b) => ((a.date || '') + (a.time || '')).localeCompare((b.date || '') + (b.time || '')));
     view.innerHTML = `
       <div class="page-head"><h1>Spielplan<small>${list.length} Spiele</small></h1>
         <div class="btn-row"><button class="btn keep" onclick="exportGamesCsv()">CSV für Canva</button><button class="vw btn primary" onclick="editGame()">+ Spiel</button></div></div>
       <div class="toolbar">${[...seasons, 'alle'].map(s => `<button class="btn sm ${s == season ? 'dark' : ''}" data-s="${esc(s)}">${s === 'alle' ? 'Alle' : 'Saison ' + esc(s)}</button>`).join('')}</div>
+      <div class="toolbar">${teamBar(team, 'data-t')}</div>
       <div class="table-wrap"><table><thead><tr><th>Datum</th><th></th><th>Gegner</th><th>Ort</th><th>Ergebnis</th><th>Sponsor</th><th>Media Team</th><th>Posts</th><th></th></tr></thead><tbody>
       ${list.map(g => {
         const o = byId(App.cache.opponents, g.opponent_id) || {};
@@ -586,7 +593,7 @@ App.pages.games = async (view) => {
         return `<tr>
           <td style="white-space:nowrap"><b>${fmtDate(g.date)}</b><div class="muted small">${g.date ? WD[parseDate(g.date).getDay()] : ''}${g.time ? ', ' + g.time + ' Uhr' : ''}</div></td>
           <td>${o.logo ? `<img class="thumb logo" src="${esc(o.logo)}">` : ''}</td>
-          <td><b>${Number(g.home) ? 'vs' : '@'} ${esc(o.name || 'TBA')}</b><div class="muted small">${esc(g.kind || '')}${g.league ? ' | ' + esc(g.league) : ''}</div></td>
+          <td><b>${Number(g.home) ? 'vs' : '@'} ${esc(o.name || 'TBA')}</b><div class="muted small">${esc(g.kind || '')}${g.league ? ' | ' + esc(g.league) : ''}</div>${teamBadge(g)}</td>
           <td>${Number(g.home) ? '<span class="badge red">Heim</span>' : '<span class="badge">Auswärts</span>'}<div class="muted small">${esc(g.location || (Number(g.home) ? App.settings.home_location : ''))}</div></td>
           <td>${g.score_us !== null && g.score_us !== '' ? `<b>${g.score_us}:${g.score_them}</b> <span class="badge ${res === 'SIEG' ? 'ok' : res === 'NIEDERLAGE' ? '' : 'warn'}">${res.charAt(0) + res.slice(1).toLowerCase()}</span>` : '<span class="muted">offen</span>'}</td>
           <td>${sp ? esc(sp.name) : '<span class="muted">keiner</span>'}</td>
@@ -596,6 +603,7 @@ App.pages.games = async (view) => {
         </tr>`; }).join('') || '<tr><td colspan="9" class="empty">Noch keine Spiele in dieser Saison.</td></tr>'}
       </tbody></table></div>`;
     $$('[data-s]').forEach(b => b.onclick = () => { season = b.dataset.s; draw(); });
+    $$('[data-t]').forEach(b => b.onclick = () => { team = b.dataset.t; draw(); });
   };
   draw();
 };
@@ -604,19 +612,20 @@ App.pages.games = async (view) => {
 /* Kader */
 App.pages.players = async (view) => {
   await load('players');
-  let unit = App._unit || 'Alle', q = '', showInactive = false;
+  let unit = App._unit || 'Alle', team = App._kteam || 'Alle Mannschaften', q = '', showInactive = false;
   const draw = () => {
-    App._unit = unit;
-    let list = App.cache.players.filter(p => showInactive || Number(p.active));
+    App._unit = unit; App._kteam = team;
+    let list = App.cache.players.filter(p => (showInactive || Number(p.active)) && (team === 'Alle Mannschaften' || teamOf(p) === team));
     if (unit === 'Coaches & Staff') list = list.filter(p => p.kind !== 'Spieler');
     else if (unit === 'Rookies') list = list.filter(p => p.kind === 'Spieler' && Number(p.rookie));
     else if (unit !== 'Alle') list = list.filter(p => p.kind === 'Spieler' && (p.unit === unit || (unit !== 'Special Teams' && p.unit === 'Two-Way')));
     if (q) list = list.filter(p => (fullName(p) + ' ' + p.number + ' ' + p.position + ' ' + p.role).toLowerCase().includes(q));
     list.sort((a, b) => (a.kind === 'Spieler') - (b.kind === 'Spieler') || (Number(a.number) || 999) - (Number(b.number) || 999) || fullName(a).localeCompare(fullName(b)));
-    const total = App.cache.players.filter(p => Number(p.active) && p.kind === 'Spieler').length;
+    const total = App.cache.players.filter(p => Number(p.active) && p.kind === 'Spieler' && (team === 'Alle Mannschaften' || teamOf(p) === team)).length;
     view.innerHTML = `
       <div class="page-head"><h1>Kader &amp; Staff<small>${total} aktive Spieler</small></h1>
         <div class="btn-row"><button class="btn keep" id="k_csv" title="Aktuelle Ansicht als CSV für Canva-Massenerstellung">CSV für Canva</button><button class="btn primary" id="k_new">+ Person</button></div></div>
+      <div class="toolbar">${teamBar(team, 'data-t')}</div>
       <div class="toolbar">${['Alle', 'Offense', 'Defense', 'Special Teams', 'Rookies', 'Coaches & Staff'].map(u => `<button class="btn sm ${u === unit ? 'dark' : ''}" data-u="${u}">${u}</button>`).join('')}
         <input class="input" id="k_q" placeholder="Suchen" value="${esc(q)}" style="max-width:220px">
         <label class="check small"><input type="checkbox" id="k_in" ${showInactive ? 'checked' : ''}> inaktive zeigen</label></div>
@@ -624,7 +633,7 @@ App.pages.players = async (view) => {
       ${list.map(p => `<tr style="${Number(p.active) ? '' : 'opacity:.5'}">
         <td>${p.photo ? `<img class="thumb" src="${esc(p.photo)}">` : '<div class="thumb"></div>'}</td>
         <td><b>${esc(p.number || '')}</b></td>
-        <td><b>${esc(fullName(p))}</b> ${p.source === 'Tabelle' ? '<span class="badge" title="Automatisch aus der Google-Tabelle angelegt">Tabelle</span>' : ''} ${Number(p.rookie) ? '<span class="badge warn">Rookie</span>' : ''} ${p.kind !== 'Spieler' ? `<span class="badge dark">${esc(p.kind)}</span>` : ''}</td>
+        <td><b>${esc(fullName(p))}</b> ${p.source === 'Tabelle' ? '<span class="badge" title="Automatisch aus der Google-Tabelle angelegt">Tabelle</span>' : ''} ${Number(p.rookie) ? '<span class="badge warn">Rookie</span>' : ''} ${teamBadge(p)} ${p.kind !== 'Spieler' ? `<span class="badge dark">${esc(p.kind)}</span>` : ''}</td>
         <td>${esc(p.kind === 'Spieler' ? p.position || '' : p.role || '')}</td>
         <td>${esc(p.kind === 'Spieler' ? p.unit || '' : '')}</td>
         <td class="small">${esc(handle(p.instagram))}</td>
@@ -633,10 +642,11 @@ App.pages.players = async (view) => {
       </tr>`).join('') || '<tr><td colspan="8" class="empty">Noch niemand eingetragen.</td></tr>'}
       </tbody></table></div>`;
     $$('[data-u]').forEach(b => b.onclick = () => { unit = b.dataset.u; draw(); });
+    $$('[data-t]').forEach(b => b.onclick = () => { team = b.dataset.t; draw(); });
     $('#k_q').oninput = e => { q = e.target.value.toLowerCase(); const pos = e.target.selectionStart; draw(); const el = $('#k_q'); el.focus(); el.setSelectionRange(pos, pos); };
     $('#k_in').onchange = e => { showInactive = e.target.checked; draw(); };
     const edit = async rec => { const r = await editRecord('players', F.players, rec, { newTitle: 'Neue Person', editTitle: 'Person bearbeiten' }); if (r) { await load('players'); draw(); } };
-    $('#k_new').onclick = () => edit({ kind: 'Spieler', active: 1 });
+    $('#k_new').onclick = () => edit({ kind: 'Spieler', active: 1, team: TEAMS.includes(team) ? team : 'Herren' });
     $$('[data-e]').forEach(b => b.onclick = () => edit(byId(App.cache.players, b.dataset.e)));
     $('#k_csv').onclick = () => {
       const ps = list.filter(p => p.kind === 'Spieler' ? Number(p.consent) : true);
@@ -1340,9 +1350,13 @@ const SITE_FIELDS = [
   { key: 'site_contact_email', label: 'Kontakt-E-Mail', hint: 'Steht im Footer, Anfragen aus dem Kontaktformular gehen hierhin.' },
   { key: 'site_hero_text', label: 'Startseite: Satz unter der Überschrift', type: 'textarea', rows: 2 },
   { key: 'site_about', label: 'Startseite: Wer wir sind', type: 'textarea', rows: 4 },
-  { key: 'site_training_times', label: 'Trainingszeiten (eine Zeile pro Termin)', type: 'textarea', rows: 3 },
-  { key: 'site_training_place', label: 'Trainingsort' },
-  { key: 'site_training_address', label: 'Adresse Trainingsort' },
+  { key: 'site_training_times', label: 'Herren: Trainingszeiten (eine Zeile pro Termin)', type: 'textarea', rows: 3 },
+  { key: 'site_training_place', label: 'Herren: Trainingsort' },
+  { key: 'site_training_address', label: 'Herren: Adresse Trainingsort' },
+  { key: 'site_youth_text', label: 'Next Generation: Vorstellung Flag Football', type: 'textarea', rows: 4 },
+  { key: 'site_youth_ages', label: 'Next Generation: Alter', placeholder: 'z. B. 8 bis 15 Jahre' },
+  { key: 'site_youth_training_times', label: 'Next Generation: Trainingszeiten (eine Zeile pro Termin)', type: 'textarea', rows: 3 },
+  { key: 'site_youth_training_place', label: 'Next Generation: Trainingsort mit Adresse' },
   { key: 'site_trial_text', label: 'Probetraining: Hinweise (mitbringen, Alter, Ausrüstung)', type: 'textarea', rows: 3 },
   { key: 'site_home_address', label: 'Adresse Heimspielort' },
   { key: 'site_gameday_text', label: 'Spieltag: Infos für Zuschauer (Parken, Essen, Kinder)', type: 'textarea', rows: 3 },

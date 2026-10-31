@@ -28,7 +28,9 @@ SITE_SPONSOR = {
     "url": "https://silasgrbwskfotografie.de",
     "instagram": "silasgrbwsk.fotografie",
 }
-NAV = [("", "Start"), ("team", "Team"), ("spielplan", "Spielplan"), ("probetraining", "Probetraining"), ("sponsoren", "Sponsoren")]
+NAV = [("", "Start"), ("team", "Team"), ("next-generation", "Next Generation"), ("spielplan", "Spielplan"), ("probetraining", "Probetraining"), ("sponsoren", "Sponsoren")]
+TEAMS = ("Herren", "Next Generation")   # wie TEAMS in server.py
+YOUTH = "Next Generation"
 POSITIONS = ["QB", "RB", "FB", "WR", "TE", "OL", "DL", "DE", "LB", "CB", "S", "K", "P", "LS", "KR/PR", "Athlete"]
 POS_PLURAL = {"QB": "Quarterbacks", "RB": "Runningbacks", "FB": "Fullbacks", "WR": "Wide Receiver", "TE": "Tight Ends", "OL": "Offensive Line",
               "DL": "Defensive Line", "DE": "Defensive Ends", "LB": "Linebacker", "CB": "Cornerbacks", "S": "Safeties", "K": "Kicker",
@@ -142,12 +144,12 @@ def layout(slug, title, description, body, info, extra_head=""):
   <div class="foot-grid">
     <div><img class="foot-logo" src="/static/logo.png" alt="" width="444" height="276">
       <p><b>{e(club)}</b><br>American Football in Emden<br>Sparte des SV Amisia Stern Wolthusen</p>
-      <div class="crest">{placeholder("Wappen SV Amisia (Datei fehlt)")}</div></div>
+      <a class="crest" href="https://www.amisia-stern.de" target="_blank" rel="noopener" title="SV Amisia Stern Wolthusen"><img src="{asset('verein/amisia-wappen.svg')}" alt="Wappen SV Amisia Stern Wolthusen" width="816" height="917" loading="lazy"></a></div>
     <div><h4>Kontakt</h4>
       <p>{f'<a href="mailto:{e(mail)}">{e(mail)}</a>' if mail else placeholder("Kontakt-E-Mail")}<br>
       <a href="/probetraining#kontakt">Kontaktformular</a></p>
       {f'<p><a href="https://www.instagram.com/{e(ig)}/" rel="noopener" target="_blank">Instagram @{e(ig)}</a></p>' if ig else ''}</div>
-    <div><h4>Verein</h4><p><a href="/team">Team</a><br><a href="/spielplan">Spielplan</a><br><a href="/probetraining">Probetraining</a><br><a href="/sponsoren">Sponsoren</a></p></div>
+    <div><h4>Verein</h4><p><a href="/team">Team</a><br><a href="/next-generation">Next Generation</a><br><a href="/spielplan">Spielplan</a><br><a href="/probetraining">Probetraining</a><br><a href="/sponsoren">Sponsoren</a></p></div>
     <div><h4>Rechtliches</h4><p><a href="/impressum">Impressum</a><br><a href="/datenschutz">Datenschutz</a><br><a class="members" href="/hub">Mitgliederbereich</a></p></div>
   </div>
   <p class="copy">© {datetime.now().year} {e(club)}. Fotos: silasgrbwsk.fotografie</p>
@@ -182,7 +184,7 @@ def game_card(g, info, big=False):
     return f"""<article class="game {'big' if big else ''} {'home' if home else 'away'}">
       <div class="g-date"><b>{e(fmt_date(g['date'], True))}</b>{f'<span>{e(g["time"])} Uhr</span>' if g['time'] else ''}</div>
       <div class="g-teams">{f'<img src="{e(logo)}" alt="" loading="lazy" width="48" height="48">' if logo else ''}<h3>{teams}</h3></div>
-      <div class="g-meta"><span class="tag">{'Heimspiel' if home else 'Auswärts'}</span>{f'<span>{e(g["league"] or g["kind"])}</span>' if (g["league"] or g["kind"]) else ''}
+      <div class="g-meta">{f'<span class="tag team">{e(g["team"])}</span>' if g.get("team", "Herren") != "Herren" else ''}<span class="tag">{'Heimspiel' if home else 'Auswärts'}</span>{f'<span>{e(g["league"] or g["kind"])}</span>' if (g["league"] or g["kind"]) else ''}
         {f'<span>{e(g["location"])}</span>' if g['location'] else ''}</div>{result}</article>"""
 
 
@@ -212,11 +214,14 @@ def person_card(p, coach=False):
 # ---------------------------------------------------------------------------
 # Seiten
 # ---------------------------------------------------------------------------
-def page_start(info, games, team, sponsors):
+def page_start(info, games, team, sponsors, insta):
     meta = image_meta()
     ng = next_game(games)
     played = [g for g in games if g["score_us"] is not None][-3:][::-1]
-    gallery = photos("galerie-")[:6]
+    ig = e(info.get("instagram") or "afc_tigers_emden")
+    # Neueste Beiträge aus der Meta-Verbindung, ohne Verbindung die eigenen Galerie-Fotos
+    tiles = ([f'<a href="{e(i["url"])}" target="_blank" rel="noopener"><img src="{e(i["image"])}" alt="{e(i["alt"])}" loading="lazy" decoding="async"></a>' for i in insta]
+             or [f'<a href="https://www.instagram.com/{ig}/" target="_blank" rel="noopener">{picture(k, "(min-width: 700px) 33vw, 100vw", meta=meta)}</a>' for k in photos("galerie-")[:6]])
     days = (date.fromisoformat(ng["date"]) - date.today()).days if ng else None
     next_html = (f"""<p class="eyebrow">Nächstes Spiel</p>{game_card(ng, info, big=True)}
         <p class="countdown"><b>{'Heute' if days == 0 else days}</b>{'' if days == 0 else (' Tag' if days == 1 else ' Tage')}{' bis zum Kickoff' if days else ' ist Gameday'}</p>"""
@@ -233,7 +238,7 @@ def page_start(info, games, team, sponsors):
 </section>
 <section class="cards wrap">
   <div class="card next">{next_html}</div>
-  <div class="card"><p class="eyebrow">Training</p><h3>Komm vorbei</h3><p>{text_or_ph(info.get("site_training_times"), "Trainingszeiten")}</p>
+  <div class="card"><p class="eyebrow">Training Herren</p><h3>Komm vorbei</h3><p>{text_or_ph(info.get("site_training_times"), "Trainingszeiten")}</p>
     <p class="small">{text_or_ph(info.get("site_training_place"), "Trainingsort")}</p><a class="more" href="/probetraining">Zum Probetraining</a></div>
   <div class="card"><p class="eyebrow">Supporter Karte {e(info.get("season"))}</p><h3>Sei dabei</h3>
     <p>{text_or_ph(info.get("site_card_short"), "Kurztext Supporter Karte")}</p><a class="more" href="/sponsoren#supporter-karte">Mehr erfahren</a></div>
@@ -244,6 +249,14 @@ def page_start(info, games, team, sponsors):
     <p>{text_or_ph(info.get("site_about"), "Vereinsvorstellung (ein bis zwei Absätze)")}</p>
     <a class="btn dark" href="/team">Zum Team</a></div>
 </section>
+<section class="wrap reveal">{section_head("Mannschaften", "Unsere Teams")}
+  <div class="teams">
+    <a class="team-card" href="/team">{picture("spiel", "(min-width: 700px) 50vw, 100vw", meta=meta)}
+      <div><p class="eyebrow light">Tackle Football</p><h3>Herren</h3><p>Unser Tackle-Football-Team: volle Ausrüstung, volle Leidenschaft.</p><span class="more">Kader und Coaches</span></div></a>
+    <a class="team-card youth" href="/next-generation"><div class="team-logo"><img src="/static/logo.png" alt="" width="444" height="276" loading="lazy"></div>
+      <div><p class="eyebrow light">Flag Football</p><h3>Next Generation</h3><p>Unsere Jugend: kontaktloser Football für Kinder und Jugendliche.</p><span class="more">Mehr zur Next Generation</span></div></a>
+  </div>
+</section>
 {f'''<section class="wrap reveal">{section_head("Ergebnisse", "Zuletzt gespielt", '<a class="more" href="/spielplan">Ganzer Spielplan</a>')}
   <div class="games">{"".join(game_card(g, info) for g in played)}</div></section>''' if played else ''}
 <section class="band reveal">
@@ -253,39 +266,57 @@ def page_start(info, games, team, sponsors):
 </section>
 {f'''<section class="wrap reveal">{section_head("Partner", "Unsere Sponsoren", '<a class="more" href="/sponsoren">Alle Sponsoren</a>')}
   <div class="logos">{"".join(sponsor_tile(s) for s in sponsors[:8])}</div></section>''' if sponsors else ''}
-<section class="wrap reveal">{section_head("Instagram", "@" + (info.get("instagram") or "afc_tigers_emden"))}
-  <div class="insta">{"".join(f'<a href="https://www.instagram.com/{e(info.get("instagram") or "afc_tigers_emden")}/" target="_blank" rel="noopener">{picture(k, "(min-width: 900px) 33vw, 50vw", meta=meta)}</a>' for k in gallery) or placeholder("Fotos für das Raster")}</div>
-  <p class="center"><a class="btn dark" href="https://www.instagram.com/{e(info.get("instagram") or "afc_tigers_emden")}/" target="_blank" rel="noopener">Folge uns auf Instagram</a></p>
+<section class="wrap reveal">{section_head("Instagram", "@" + ig)}
+  <div class="insta">{"".join(tiles[:6]) or placeholder("Fotos für das Raster")}</div>
+  <p class="center"><a class="btn dark" href="https://www.instagram.com/{ig}/" target="_blank" rel="noopener">Folge uns auf Instagram</a></p>
 </section>"""
     return layout("", "", "Die Emden Tigers sind die American-Football-Sparte des SV Amisia Stern Wolthusen in Emden. Spielplan, Team, Probetraining und Sponsoren.", body, info)
 
 
+def coaches_of(team, which):
+    return sorted([p for p in team if p["kind"] != "Spieler" and p.get("team", "Herren") == which],
+                  key=lambda p: COACH_ROLES.index(p["role"]) if p["role"] in COACH_ROLES else 99)
+
+
 def page_team(info, team):
-    coaches = sorted([p for p in team if p["kind"] != "Spieler"], key=lambda p: COACH_ROLES.index(p["role"]) if p["role"] in COACH_ROLES else 99)
-    units = roster(team)
+    coaches = coaches_of(team, "Herren")
+    youth_coaches = coaches_of(team, YOUTH)
+    units = roster([p for p in team if p.get("team", "Herren") == "Herren"])
     body = f"""<section class="page-hero">{picture("team", "100vw", "hero-img", eager=True)}<div class="hero-text"><p class="eyebrow light">Team</p><h1>Kader und Coaches</h1></div></section>
-<section class="wrap">{section_head("Coaching Staff", "Unsere Coaches")}
+<section class="wrap narrow intro"><p>Hinter jedem Spielzug steckt ein ganzes Team. Hier stellen wir dir die Menschen vor, die bei den Tigers auf dem Feld stehen
+  und an der Seitenlinie die Fäden ziehen. Manche spielen seit Jahren Football, andere haben erst bei uns angefangen.</p>
+  <p class="jump"><a class="btn dark" href="#herren">Herren</a><a class="btn ghost-dark" href="#next-generation">Next Generation</a></p></section>
+<section class="wrap" id="herren">{section_head("Herren", "Coaching Staff")}
   <div class="people">{"".join(person_card(p, coach=True) for p in coaches) or '<p>Die Coaches werden bald hier vorgestellt.</p>'}</div></section>
-<section class="wrap">{section_head("Kader", "Saison " + (info.get("season") or ""))}
+<section class="wrap">{section_head("Herren", "Kader Saison " + (info.get("season") or ""))}
   {"".join(f'<h3 class="unit">{e(u)}</h3>' + "".join(f'<h4 class="pos">{e(label)}</h4><div class="people">' + "".join(person_card(p) for p in ps) + '</div>' for label, ps in groups) for u, groups in units)
    or '<p>Der Kader wird bald hier vorgestellt.</p>'}
-  <p class="small muted">Fotos zeigen wir nur mit Einverständnis der Spielerinnen und Spieler.</p></section>"""
-    return layout("team", "Team", "Kader und Coaching Staff der Emden Tigers.", body, info)
+  <p class="small muted">Fotos zeigen wir nur mit Einverständnis der Spielerinnen und Spieler.</p></section>
+<section class="wrap" id="next-generation">{section_head("Next Generation", "Coaches der Flag-Jugend", '<a class="more" href="/next-generation">Mehr zur Next Generation</a>')}
+  <div class="people">{"".join(person_card(p, coach=True) for p in youth_coaches) or '<p>Die Coaches der Next Generation werden bald hier vorgestellt.</p>'}</div>
+  <p class="small muted">Zum Schutz der Kinder und Jugendlichen zeigen wir die Spielerinnen und Spieler der Next Generation nicht auf der Webseite.</p></section>"""
+    return layout("team", "Team", "Kader und Coaching Staff der Emden Tigers: Herren und Next Generation (Flag-Jugend).", body, info)
 
 
 def page_schedule(info, games):
-    seasons = sorted({g["season"] for g in games if g["season"]}, reverse=True)
     today = date.today().isoformat()
-    def season_block(s):
-        gs = [g for g in games if g["season"] == s]
+    def season_block(gs, s):
+        gs = [g for g in gs if g["season"] == s]
         up = [g for g in gs if g["date"] >= today]
         done = [g for g in gs if g["date"] < today][::-1]
         return (f'<h3 class="unit">Saison {e(s)}</h3>'
                 + (f'<h4 class="pos">Kommende Spiele</h4><div class="games">{"".join(game_card(g, info) for g in up)}</div>' if up else '')
                 + (f'<h4 class="pos">Ergebnisse</h4><div class="games">{"".join(game_card(g, info) for g in done)}</div>' if done else ''))
+    def team_block(t):
+        gs = [g for g in games if g.get("team", "Herren") == t]
+        seasons = sorted({g["season"] for g in gs if g["season"]}, reverse=True)
+        empty = ('<p>Der Spielplan der Herren folgt in Kürze.</p>' if t == "Herren"
+                 else '<p>Turniere und Spieltage der Next Generation stehen hier, sobald sie feststehen.</p>')
+        return (f'<section class="wrap" id="{"herren" if t == "Herren" else "next-generation"}">{section_head("Spielplan", t)}'
+                + ("".join(season_block(gs, s) for s in seasons) or empty) + '</section>')
     loc = info.get("home_location") or ""
     body = f"""<section class="page-hero">{picture("spiel", "100vw", "hero-img", eager=True)}<div class="hero-text"><p class="eyebrow light">Saison {e(info.get("season"))}</p><h1>Spielplan</h1></div></section>
-<section class="wrap">{"".join(season_block(s) for s in seasons) or '<p>Der Spielplan folgt in Kürze.</p>'}</section>
+{"".join(team_block(t) for t in TEAMS)}
 <section class="wrap split-info">
   <div class="card"><p class="eyebrow">Heimspiele</p><h3>{e(loc) or placeholder("Heimspielort")}</h3>
     <p>{f"Eintritt: {e(info.get('entry_fee'))} €" if info.get("entry_fee") else placeholder("Eintritt")}</p>
@@ -296,20 +327,36 @@ def page_schedule(info, games):
     return layout("spielplan", "Spielplan", "Spielplan, Ergebnisse und Heimspiele der Emden Tigers.", body, info)
 
 
-def page_trial(info, sent=None):
+def youth_training_card(info):
+    place = info.get("site_youth_training_place")
+    return f"""<div class="card"><p class="eyebrow">Next Generation</p><h3>Flag-Jugend</h3>
+    <p class="big-lines">{text_or_ph(info.get("site_youth_training_times"), "Trainingszeiten Next Generation")}</p>
+    <p>{text_or_ph(place, "Trainingsort Next Generation")}</p>
+    {f'<a class="more" href="https://www.openstreetmap.org/search?query={e(place)}" target="_blank" rel="noopener">Anfahrt auf der Karte</a>' if place else ''}</div>"""
+
+
+def page_trial(info, sent=None, preselect=""):
     form_msg = {"ok": '<p class="msg ok">Danke! Deine Nachricht ist angekommen, wir melden uns bei dir.</p>',
                 "fehler": '<p class="msg err">Das hat nicht geklappt. Bitte prüfe deine Angaben und versuche es noch einmal.</p>'}.get(sent, "")
+    youth = preselect == "next-generation"
     body = f"""<section class="page-hero">{picture("training", "100vw", "hero-img", eager=True)}<div class="hero-text"><p class="eyebrow light">Mitmachen</p><h1>Probetraining</h1></div></section>
-<section class="wrap split-info">
-  <div class="card"><p class="eyebrow">Trainingszeiten</p><h3>Herren</h3><p class="big-lines">{text_or_ph(info.get("site_training_times"), "Trainingszeiten")}</p></div>
-  <div class="card"><p class="eyebrow">Trainingsort</p><h3>{text_or_ph(info.get("site_training_place"), "Trainingsort")}</h3>
+<section class="wrap narrow intro"><p>Bei den Tigers kannst du jederzeit reinschnuppern. Such dir einfach die passende Mannschaft aus,
+  komm zum Training und lern das Team kennen. Ob du schon Football gespielt hast oder den Sport erst entdecken willst: Wir freuen uns auf dich.</p></section>
+<section class="wrap split-info three">
+  <div class="card"><p class="eyebrow">Herren</p><h3>Tackle Football</h3><p class="big-lines">{text_or_ph(info.get("site_training_times"), "Trainingszeiten")}</p></div>
+  <div class="card"><p class="eyebrow">Trainingsort Herren</p><h3>{text_or_ph(info.get("site_training_place"), "Trainingsort")}</h3>
     <p>{text_or_ph(info.get("site_training_address"), "Adresse")}</p>
     {f'<a class="more" href="https://www.openstreetmap.org/search?query={e(info.get("site_training_address"))}" target="_blank" rel="noopener">Anfahrt auf der Karte</a>' if info.get("site_training_address") else ''}</div>
+  {youth_training_card(info)}
 </section>
 <section class="wrap narrow" id="kontakt">{section_head("Kontakt", "Schreib uns")}
   <p>{text_or_ph(info.get("site_trial_text"), "Hinweise zum Probetraining (was mitbringen, Alter, Ausrüstung)")}</p>
+  <p>Für die Next Generation melden sich bitte die Eltern bei uns.</p>
   {form_msg}
   <form class="contact" method="post" action="/kontakt">
+    <fieldset class="choice"><legend>Mannschaft</legend>
+      <label><input type="radio" name="team" value="Herren" {'' if youth else 'checked'}> Herren</label>
+      <label><input type="radio" name="team" value="Next Generation" {'checked' if youth else ''}> Next Generation (Flag-Jugend)</label></fieldset>
     <label>Name<input name="name" required maxlength="100" autocomplete="name"></label>
     <label>E-Mail<input name="email" type="email" maxlength="150" autocomplete="email"></label>
     <label>Telefon (optional)<input name="phone" maxlength="40" autocomplete="tel"></label>
@@ -318,7 +365,39 @@ def page_trial(info, sent=None):
     <label class="check"><input type="checkbox" name="consent" value="1" required> Ich bin einverstanden, dass meine Angaben zur Beantwortung meiner Anfrage gespeichert werden. Mehr in der <a href="/datenschutz">Datenschutzerklärung</a>.</label>
     <button class="btn red" type="submit">Nachricht senden</button>
   </form></section>"""
-    return layout("probetraining", "Probetraining", "Probetraining bei den Emden Tigers: Trainingszeiten, Trainingsort und Kontakt.", body, info)
+    return layout("probetraining", "Probetraining", "Probetraining bei den Emden Tigers: Trainingszeiten, Trainingsort und Kontakt für Herren und Next Generation.", body, info)
+
+
+def page_youth(info, team, games):
+    coaches = coaches_of(team, YOUTH)
+    today = date.today().isoformat()
+    up = [g for g in games if g.get("team") == YOUTH and g["date"] >= today]
+    ages = info.get("site_youth_ages")
+    body = f"""<section class="page-hero youth-hero"><div class="hero-text"><p class="eyebrow light">Flag-Jugend der Emden Tigers</p><h1>Next Generation</h1>
+  <p class="lead">Football ohne Tackling: schnell, fair und mit ganz viel Spaß.</p>
+  <div class="btns"><a class="btn red" href="/probetraining?mannschaft=next-generation#kontakt">Zum Probetraining</a></div></div></section>
+<section class="split wrap reveal">
+  <div class="split-text"><p class="eyebrow">Flag Football</p><h2>Was ist Flag Football?</h2>
+    <p>{text_or_ph(info.get("site_youth_text"), "Vorstellung Flag Football und Next Generation")}</p></div>
+  <div class="facts">
+    <div><b>Kontaktlos</b><span>Fähnchen ziehen statt tackeln</span></div>
+    <div><b>Wenig Ausrüstung</b><span>Sportkleidung und Flaggengürtel</span></div>
+    <div><b>Für alle</b><span>Mädchen und Jungen zusammen</span></div>
+    <div><b>Alter</b><span>{e(ages) if ages else placeholder("Altersgruppen")}</span></div>
+  </div>
+</section>
+<section class="wrap split-info">
+  {youth_training_card(info)}
+  <div class="card"><p class="eyebrow">Für Eltern</p><h3>Erst mal reinschnuppern</h3>
+    <p>Ihr Kind möchte Flag Football ausprobieren? Schreiben Sie uns kurz über das Formular, wir melden uns mit allen Infos zum ersten Training.
+    Bitte bringen Sie Sportkleidung, Turnschuhe und etwas zu trinken mit.</p>
+    <a class="more" href="/probetraining?mannschaft=next-generation#kontakt">Zum Kontaktformular</a></div>
+</section>
+{f'''<section class="wrap reveal">{section_head("Termine", "Nächste Spieltage")}<div class="games">{"".join(game_card(g, info) for g in up)}</div></section>''' if up else ''}
+<section class="wrap">{section_head("Coaching Staff", "Coaches der Next Generation")}
+  <div class="people">{"".join(person_card(p, coach=True) for p in coaches) or '<p>Die Coaches der Next Generation werden bald hier vorgestellt.</p>'}</div>
+  <p class="small muted">Zum Schutz der Kinder und Jugendlichen zeigen wir die Spielerinnen und Spieler der Next Generation nicht auf der Webseite.</p></section>"""
+    return layout("next-generation", "Next Generation", "Next Generation: die Flag-Football-Jugend der Emden Tigers. Kontaktloser Football für Kinder und Jugendliche in Emden.", body, info)
 
 
 def sponsor_tile(s):
@@ -350,19 +429,21 @@ def page_404(info):
     return layout("", "Nicht gefunden", "", body, info)
 
 
-PAGES = ("", "team", "spielplan", "probetraining", "sponsoren", "impressum", "datenschutz")
+PAGES = ("", "team", "next-generation", "spielplan", "probetraining", "sponsoren", "impressum", "datenschutz")
 
 
 def render(slug, data, sent=None):
     info = data["info"]
     if slug == "":
-        return page_start(info, data["games"], data["team"], data["sponsors"])
+        return page_start(info, data["games"], data["team"], data["sponsors"], data.get("instagram") or [])
     if slug == "team":
         return page_team(info, data["team"])
     if slug == "spielplan":
         return page_schedule(info, data["games"])
+    if slug == "next-generation":
+        return page_youth(info, data["team"], data["games"])
     if slug == "probetraining":
-        return page_trial(info, sent)
+        return page_trial(info, sent, data.get("preselect") or "")
     if slug == "sponsoren":
         return page_sponsors(info, data["sponsors"])
     if slug in LEGAL:

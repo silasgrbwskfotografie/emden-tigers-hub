@@ -17,6 +17,11 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
   Schriften (Anton, Karla, OFL, lokal), Fotos als WebP in 640/1280/1920 mit `bilder.json` (Alt-Texte). Seitentexte: Einstellungen `site_*`.
   Öffentliche Schnittstelle `/api/public/<info|spielplan|team|sponsoren>`: nur lesen, jede Antwort Feld für Feld gebaut (Whitelist).
   Neue öffentliche Felder nur dort ergänzen, nie Datenbankzeilen durchreichen. Kontaktformular `POST /kontakt` -> Tabelle `contact_requests`.
+  Instagram-Raster: `insta_refresh` holt die neuesten Beiträge über die Meta-Verbindung (alle 30 Minuten, im Hintergrund), speichert die Bilder in `data/instagram`,
+  ausgeliefert unter `/web/insta/<datei>`. Nur Bild, Permalink (nur instagram.com) und erste Caption-Zeile als Alt-Text, Besucher laden nichts von Meta.
+  Mannschaften: `TEAMS` (Herren, Next Generation) in server.py, website.py und pages.js gleich halten. `players.team`, `games.team`.
+  Spieler der Next Generation (Minderjährige) gibt `public_team` nie aus, nur deren Coaches und Staff.
+  Standardtexte `site_*` in `DEFAULT_SETTINGS`; neue Texte für bestehende Server: `SITE_TEXTS_VERSION` erhöhen (füllt nur leere Felder).
   Fehlende Inhalte als `placeholder()` (gelb markiert) und in `PLATZHALTER.md` eintragen, nie erfinden.
 - `static/`: Frontend des Hubs ohne Build-Schritt (Vanilla JS, eine Seite mit Hash-Router, ausgeliefert unter `/hub`).
   - `app.js`: API-Helfer, Router, Formular-Generator (`editRecord`, `fieldHtml`), Rechte-Hilfen (`can`, `PAGE_AREA`, `applyPermissions`).
@@ -39,7 +44,7 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
 
 ## Sicherheit (nicht aufweichen)
 
-- Ohne Sitzung erreichbar: die Webseite (`/`, `/team`, `/spielplan`, `/probetraining`, `/sponsoren`, `/impressum`, `/datenschutz`, `/web/assets/...`, `/api/public/...`, `POST /kontakt`),
+- Ohne Sitzung erreichbar: die Webseite (`/`, `/team`, `/next-generation`, `/spielplan`, `/probetraining`, `/sponsoren`, `/impressum`, `/datenschutz`, `/web/assets/...`, `/web/insta/...`, `/api/public/...`, `POST /kontakt`),
   `/login`, `/setup`, `/invite`, `/passwort-vergessen`, `/passwort-neu`, `/healthz`, `/bestellen`, `/teilen`, `/manifest.webmanifest`, `/sw.js`, `style.css`, `logo.png`, `icon.png`, `icon-192.png`, `icon-512.png`.
   Alles unter `/hub`, `/static`, `/media` und `/api` (außer `/api/public`) braucht eine Sitzung.
 - Webseite: keine externen Schriften, Tracker oder Einbettungen. Einzige Ausnahme sind die Rechtstexte der IT-Recht Kanzlei auf `/impressum` und `/datenschutz`.
