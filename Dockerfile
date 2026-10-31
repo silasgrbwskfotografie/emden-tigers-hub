@@ -14,8 +14,9 @@ RUN apt-get update \
  && mkdir -p /data && chown tigers /data
 
 WORKDIR /app
-COPY --chown=tigers server.py ./
+COPY --chown=tigers server.py website.py ./
 COPY --chown=tigers static ./static
+COPY --chown=tigers web ./web
 
 USER tigers
 VOLUME ["/data"]

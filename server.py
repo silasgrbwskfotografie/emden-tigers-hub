@@ -46,6 +46,8 @@ from urllib.parse import urlparse, unquote, parse_qs, urlencode
 import urllib.request
 import urllib.error
 
+import website   # öffentliche Webseite (website.py, gleiche Ordnerebene)
+
 VERSION = "3.9"
 APP_NAME = "Emden Tigers Hub"
 ENV = os.environ.get
@@ -337,6 +339,20 @@ DEFAULT_SETTINGS = {
     "sheet_last_sync": "",
     "sheet_last_error": "",
     "media_tasks": "Feldrand / Live-Storys\nFotos\nMedienzelt / Livestream\nVideo / Clips",
+    # Öffentliche Webseite (Einstellungen > Webseite). Leere Texte erscheinen dort als markierter Platzhalter.
+    "site_hero_title": "",
+    "site_hero_text": "",
+    "site_about": "",
+    "site_training_times": "Dienstag 20:30 bis 22:00 Uhr\nDonnerstag 19:00 bis 21:00 Uhr",
+    "site_training_place": "Kunstrasen Eintracht Emden JFV e. V.",
+    "site_training_address": "Pillauer Str. 12, 26725 Emden",
+    "site_trial_text": "",
+    "site_home_address": "",
+    "site_gameday_text": "",
+    "site_card_short": "",
+    "site_card_text": "",
+    "site_sponsor_text": "",
+    "site_contact_email": "",
 }
 
 
@@ -761,7 +777,8 @@ def social_config():
 # Nur hier definierte Felder gehen raus, jede Antwort wird Feld für Feld neu gebaut.
 # Nie: Finanzen, Mitglieder, Kontakte, Konten, Notizen, interne Dateien.
 # ---------------------------------------------------------------------------
-PUBLIC_SETTINGS = ("club_name", "club_short", "season", "instagram", "home_location", "home_city", "entry_fee", "card_price", "training_text")
+PUBLIC_SETTINGS = ("club_name", "club_short", "season", "instagram", "home_location", "home_city", "entry_fee", "card_price", "training_text",
+                   *(k for k in DEFAULT_SETTINGS if k.startswith("site_")))
 
 
 def public_image(path, key):
@@ -1980,7 +1997,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def send_file(self, path: Path, download_name=None):
+    def send_file(self, path: Path, download_name=None, cache=False):
         if not path.is_file():
             return self.send_error(404)
         ctype = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
@@ -1988,7 +2005,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", ctype + ("; charset=utf-8" if ctype.startswith("text/") or ctype.endswith("javascript") else ""))
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-cache")
+        # Schriften und Bilder der Webseite eine Woche im Browser behalten, alles andere immer frisch prüfen
+        self.send_header("Cache-Control", "public, max-age=604800" if cache else "no-cache")
         self.send_header("X-Content-Type-Options", "nosniff")
         if download_name:
             self.send_header("Content-Disposition", f'attachment; filename="{download_name}"')
@@ -2185,9 +2203,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_error(404)
         if head == "api" and p[1:2] == ["public"]:
             return self.api_public(method, p[2:])
-        if not p and method == "GET":
-            # Vorläufig: die öffentliche Webseite kommt hierher. Alte Lesezeichen (/#/posts) landen so im Hub.
-            return self.redirect("/hub")
+        # Öffentliche Webseite: Seiten, Dateien unter /web/assets, sonst 404-Seite (Hub-Pfade brauchen weiter Login)
+        if method == "GET" and (not p or (len(p) == 1 and head in website.PAGES)):
+            return self.send_site(head)
+        if method == "GET" and p[:2] == ["web", "assets"]:
+            return self.serve_under(website.WEB / "assets", p[2:], cache=True)
+        if method == "GET" and head not in ("hub", "static", "media", "api"):
+            return self.send_site("404", 404)
 
         # Ab hier nur mit Anmeldung
         user = self.current_user()
@@ -2209,13 +2231,19 @@ class Handler(BaseHTTPRequestHandler):
             return self.api(method, p[1:], user)
         return self.send_error(404)
 
-    def serve_under(self, root: Path, rest, inline=None):
+    def serve_under(self, root: Path, rest, inline=None, cache=False):
         target = (root / "/".join(rest)).resolve()
         if root.resolve() not in target.parents and target != root.resolve():
             return self.send_error(403)
         # Hochgeladene Dokumente (HTML, SVG, Office ...) nie im Hub-Kontext öffnen, sondern herunterladen
         download = target.name if inline is not None and target.suffix.lower() not in inline else None
-        return self.send_file(target, download)
+        return self.send_file(target, download, cache)
+
+    def send_site(self, slug, status=200):
+        """Seite der öffentlichen Webseite aus den öffentlichen Daten bauen."""
+        data = {"info": public_info(), "games": public_games(), "team": public_team(), "sponsors": public_sponsors()}
+        sent = (parse_qs(urlparse(self.path).query).get("gesendet") or [None])[0]
+        return self.send_html(website.render(slug, data, sent), status)
 
     # -- Anmeldung --------------------------------------------------------
     def api_auth(self, method, p):
