@@ -21,6 +21,8 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
   ausgeliefert unter `/web/insta/<datei>`. Nur Bild, Permalink (nur instagram.com) und erste Caption-Zeile als Alt-Text, Besucher laden nichts von Meta.
   Mannschaften: `TEAMS` (Herren, Next Generation) in server.py, website.py und pages.js gleich halten. `players.team`, `games.team`.
   Spieler der Next Generation (Minderjährige) gibt `public_team` nie aus, nur deren Coaches und Staff.
+  Seiten: Start (mit Training und Probetraining), Herren (Kader nach Offense/Defense, Position unter dem Namen, dann Coaches), Jugend, Spielplan, Sponsoren, Kontakt.
+  Kontaktformular mit Anliegen `CONTACT_TOPICS` (server.py und website.py gleich halten), Vorauswahl per `/kontakt?anliegen=herren|jugend|sponsoring|frage`.
   Standardtexte `site_*` in `DEFAULT_SETTINGS`; neue Texte für bestehende Server: `SITE_TEXTS_VERSION` erhöhen (füllt nur leere Felder).
   Fehlende Inhalte als `placeholder()` (gelb markiert) und in `PLATZHALTER.md` eintragen, nie erfinden.
 - `static/`: Frontend des Hubs ohne Build-Schritt (Vanilla JS, eine Seite mit Hash-Router, ausgeliefert unter `/hub`).
@@ -44,7 +46,7 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
 
 ## Sicherheit (nicht aufweichen)
 
-- Ohne Sitzung erreichbar: die Webseite (`/`, `/team`, `/next-generation`, `/spielplan`, `/probetraining`, `/sponsoren`, `/impressum`, `/datenschutz`, `/web/assets/...`, `/web/insta/...`, `/api/public/...`, `POST /kontakt`),
+- Ohne Sitzung erreichbar: die Webseite (`/`, `/herren`, `/jugend`, `/spielplan`, `/sponsoren`, `/kontakt`, `/impressum`, `/datenschutz`, alte Adressen `/team`, `/next-generation`, `/probetraining` als 301 in `website.REDIRECTS`, `/web/assets/...`, `/web/insta/...`, `/api/public/...`, `POST /kontakt`),
   `/login`, `/setup`, `/invite`, `/passwort-vergessen`, `/passwort-neu`, `/healthz`, `/bestellen`, `/teilen`, `/manifest.webmanifest`, `/sw.js`, `style.css`, `logo.png`, `icon.png`, `icon-192.png`, `icon-512.png`.
   Alles unter `/hub`, `/static`, `/media` und `/api` (außer `/api/public`) braucht eine Sitzung.
 - Webseite: keine externen Schriften, Tracker oder Einbettungen. Einzige Ausnahme sind die Rechtstexte der IT-Recht Kanzlei auf `/impressum` und `/datenschutz`.

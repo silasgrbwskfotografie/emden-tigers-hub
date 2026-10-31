@@ -1254,7 +1254,7 @@ F.contact_requests = [
 ];
 App.pages.contacts = simpleList({
   table: 'contact_requests', title: 'Anfragen', fields: F.contact_requests, newTitle: 'Anfrage',
-  sub: l => `${l.filter(r => r.status === 'Neu').length} neu, ${l.length} insgesamt. Kommen über das Formular auf der Webseite (Probetraining).`,
+  sub: l => `${l.filter(r => r.status === 'Neu').length} neu, ${l.length} insgesamt. Kommen über das Kontaktformular der Webseite.`,
   sort: (a, b) => (CONTACT_STATUS.indexOf(a.status) - CONTACT_STATUS.indexOf(b.status)) || (b.created || '').localeCompare(a.created || ''),
   columns: [
     { label: 'Eingang', html: r => `<span class="small">${fmtStamp(r.created)}</span>` },
@@ -1357,7 +1357,7 @@ const SITE_FIELDS = [
   { key: 'site_youth_ages', label: 'Next Generation: Alter', placeholder: 'z. B. 8 bis 15 Jahre' },
   { key: 'site_youth_training_times', label: 'Next Generation: Trainingszeiten (eine Zeile pro Termin)', type: 'textarea', rows: 3 },
   { key: 'site_youth_training_place', label: 'Next Generation: Trainingsort mit Adresse' },
-  { key: 'site_trial_text', label: 'Probetraining: Hinweise (mitbringen, Alter, Ausrüstung)', type: 'textarea', rows: 3 },
+  { key: 'site_trial_text', label: 'Startseite, Training: Hinweise zum Probetraining (mitbringen, Ausrüstung)', type: 'textarea', rows: 3 },
   { key: 'site_home_address', label: 'Adresse Heimspielort' },
   { key: 'site_gameday_text', label: 'Spieltag: Infos für Zuschauer (Parken, Essen, Kinder)', type: 'textarea', rows: 3 },
   { key: 'site_card_short', label: 'Supporter Karte: Kurztext für die Startseite', type: 'textarea', rows: 2 },

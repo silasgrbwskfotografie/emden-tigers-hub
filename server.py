@@ -73,6 +73,8 @@ BACKUPS = DATA / "backups"
 # Mannschaften (players.team, games.team). Gleiche Liste in static/pages.js (TEAMS) und website.py.
 TEAMS = ("Herren", "Next Generation")
 YOUTH_TEAM = "Next Generation"   # Flag-Jugend: Spieler (Minderjährige) erscheinen nie auf der Webseite
+# Anliegen im Kontaktformular der Webseite (landet als Quelle in contact_requests), wie CONTACT_TOPICS in website.py
+CONTACT_TOPICS = ("Probetraining Herren", "Probetraining Jugend", "Sponsoring", "Allgemeine Frage")
 
 # ---------------------------------------------------------------------------
 # Datenbank-Schema
@@ -2166,8 +2168,8 @@ class Handler(BaseHTTPRequestHandler):
     def parts(self):
         return [unquote(p) for p in urlparse(self.path).path.strip("/").split("/") if p]
 
-    def redirect(self, to):
-        self.send_response(302)
+    def redirect(self, to, status=302):
+        self.send_response(status)
         self.send_header("Location", to)
         self.send_header("Content-Length", "0")
         self.end_headers()
@@ -2321,6 +2323,9 @@ class Handler(BaseHTTPRequestHandler):
         if head == "kontakt" and method == "POST":
             return self.public_contact()
         # Öffentliche Webseite: Seiten, Dateien unter /web/assets, sonst 404-Seite (Hub-Pfade brauchen weiter Login)
+        if method == "GET" and len(p) == 1 and head in website.REDIRECTS:   # alte Adressen der ersten Fassung
+            q = urlparse(self.path).query
+            return self.redirect(website.REDIRECTS[head] + ("?" + q if q else ""), 301)
         if method == "GET" and (not p or (len(p) == 1 and head in website.PAGES)):
             return self.send_site(head)
         if method == "GET" and p[:2] == ["web", "assets"]:
@@ -2364,7 +2369,7 @@ class Handler(BaseHTTPRequestHandler):
                 "instagram": public_instagram() if slug == "" else []}
         q = parse_qs(urlparse(self.path).query)
         sent = (q.get("gesendet") or [None])[0]
-        data["preselect"] = (q.get("mannschaft") or [""])[0]   # Vorauswahl im Kontaktformular (website.py prüft den Wert)
+        data["preselect"] = (q.get("anliegen") or [""])[0]   # Vorauswahl im Kontaktformular (website.py prüft den Wert)
         return self.send_html(website.render(slug, data, sent), status)
 
     # -- Anmeldung --------------------------------------------------------
@@ -2495,7 +2500,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- Kontaktformular der Webseite (ohne Login, funktioniert ohne JavaScript) --
     def public_contact(self):
-        back = lambda res: self.redirect(f"/probetraining?gesendet={res}#kontakt")
+        back = lambda res: self.redirect(f"/kontakt?gesendet={res}#formular")
         try:
             raw = self.read_body(20000).decode("utf-8")
         except (PayloadTooLarge, UnicodeDecodeError):
@@ -2506,7 +2511,7 @@ class Handler(BaseHTTPRequestHandler):
         if not reset_rate_ok("ip", "kontakt:" + self.client_ip()):
             return back("fehler")
         name, email, phone, msg = f.get("name", "")[:100], f.get("email", "")[:150], f.get("phone", "")[:40], f.get("message", "")[:3000]
-        source = "Probetraining " + f["team"] if f.get("team") in TEAMS else "Probetraining"
+        source = f.get("anliegen") if f.get("anliegen") in CONTACT_TOPICS else "Webseite"
         if not name or not msg or f.get("consent") != "1" or not (email or phone):
             return back("fehler")
         if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):

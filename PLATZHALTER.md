@@ -9,17 +9,17 @@ Die meisten Texte pflegst du im Hub unter **Verwaltung > Einstellungen > Webseit
 |---|---|---|
 | Footer, jede Seite | Kontakt-E-Mail des Vereins | Einstellungen > Webseite > Kontakt-E-Mail |
 | Spielplan, Heimspiele | Adresse des Heimspielorts (für „Anfahrt“) | Einstellungen > Webseite |
-| Next Generation, Probetraining | Trainingszeiten der Flag-Jugend | Einstellungen > Webseite > Next Generation |
-| Next Generation, Probetraining | Trainingsort der Flag-Jugend mit Adresse | Einstellungen > Webseite > Next Generation |
-| Next Generation | Altersgruppen (z. B. 8 bis 15 Jahre) | Einstellungen > Webseite > Next Generation |
+| Start (Training), Jugend | Trainingszeiten der Flag-Jugend | Einstellungen > Webseite > Next Generation |
+| Start (Training), Jugend | Trainingsort der Flag-Jugend mit Adresse | Einstellungen > Webseite > Next Generation |
+| Jugend | Altersgruppen (z. B. 8 bis 15 Jahre) | Einstellungen > Webseite > Next Generation |
 
 ## Von Claude geschrieben (bitte gegenlesen)
 
 Alle übrigen Texte hat Claude formuliert, ohne Fakten wie Gründungsjahr, Liga, Erfolge oder Preise zu erfinden.
 Sie stehen als Standardtexte in `server.py` (`DEFAULT_SETTINGS`, `site_*`) und lassen sich unter Einstellungen > Webseite ändern:
-Einleitung und „Wer wir sind“ auf der Startseite, Probetraining, Spieltag, Supporter Karte, Sponsor werden, Vorstellung Flag Football.
-Feste Texte im Code (`website.py`): Mannschaftskarten auf der Startseite, Einleitung auf Team und Probetraining, Eltern-Hinweis und Kurzinfos auf der Next-Generation-Seite.
-Bitte besonders prüfen: „Für den Anfang reichen Sportkleidung, Fußball- oder Turnschuhe“ (Probetraining) und „Sportkleidung und Flaggengürtel“ (Next Generation, stellt der Verein die Gürtel?).
+Einleitung und „Wer wir sind“ auf der Startseite, Hinweise zum Probetraining, Spieltag, Supporter Karte, Sponsor werden, Vorstellung Flag Football.
+Feste Texte im Code (`website.py`): Mannschaftskarten und Abschnitt Training auf der Startseite, Einleitungen auf Herren und Kontakt, Eltern-Hinweis und Kurzinfos auf der Jugendseite.
+Bitte besonders prüfen: „Für den Anfang reichen Sportkleidung, Fußball- oder Turnschuhe“ (Startseite, Training) und „Sportkleidung und Flaggengürtel“ (Jugend, stellt der Verein die Gürtel?).
 
 ## Bitte prüfen (aus bestehenden Hub-Daten übernommen)
 

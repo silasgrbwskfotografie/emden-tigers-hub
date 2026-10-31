@@ -1,12 +1,15 @@
 # Änderungen
 
 ## 4.0 (31.10.2026)
-- Öffentliche Vereinswebseite unter `/`: Start, Team, Spielplan, Probetraining mit Kontaktformular, Sponsoren und Supporter Karte, Impressum, Datenschutz
+- Öffentliche Vereinswebseite unter `/`: Start (mit Training und Probetraining), Herren, Jugend, Spielplan, Sponsoren und Supporter Karte, Kontakt, Impressum, Datenschutz
+  - Herren: Kader direkt auf der Seite nach Offense und Defense, genaue Position unter dem Namen, danach die Coaches
+  - Kontaktformular mit Anliegen (Probetraining Herren, Probetraining Jugend, Sponsoring, Allgemeine Frage)
+  - Alte Adressen /team, /next-generation und /probetraining leiten dauerhaft weiter
   - Aufbau angelehnt an silasgrbwskfotografie.de, Grafikstil der Vereinsposts (Anton, Rot und Schwarz), mobile first, ohne JavaScript-Pflicht
   - Spielplan, Kader, Coaches und Sponsoren kommen live aus dem Hub, Spielerfotos nur mit Einwilligung, Texte unter Einstellungen > Webseite
   - Lokale Schriften, keine Tracker oder Einbettungen, Fotos von silasgrbwsk.fotografie als WebP in drei Größen
   - Instagram-Raster mit den 6 neuesten Beiträgen (Handy: 3 untereinander), über die Meta-Verbindung alle 30 Minuten geholt und lokal gespeichert, ohne Verbindung eigene Fotos
-  - Zwei Mannschaften: Herren und Next Generation (Flag-Jugend) mit eigener Seite, getrennt auf Team, Spielplan und Probetraining (Formular mit Auswahl der Mannschaft)
+  - Zwei Mannschaften: Herren und Next Generation (Flag-Jugend) mit je eigener Seite, im Spielplan getrennt
   - Spieler der Next Generation erscheinen nie öffentlich, nur Coaches und Staff
   - Alle Webseiten-Texte vorformuliert (einmalig in noch leere Felder bestehender Server übernommen)
   - Über dem Footer: Sponsor der Webseite (silasgrbwsk.fotografie), im Footer das Wappen des SV Amisia mit Link

@@ -152,6 +152,10 @@ p { margin: 0 0 1em; }
 .team-logo { display: grid; place-items: start center; padding-top: 34px; }
 .team-logo img { width: min(220px, 60%); height: auto; }
 .intro { padding-bottom: 0; font-size: 18px; }
+.intro-text { font-size: 18px; max-width: 760px; }
+.split-info.three { margin: 22px 0; }
+.trial-note { background: var(--card); border-left: 5px solid var(--red); border-radius: 4px; padding: 22px 24px; box-shadow: 0 6px 18px rgba(0,0,0,.06); }
+.trial-note .btns { margin-top: 10px; }
 .jump { display: flex; flex-wrap: wrap; gap: 10px; }
 .btn.ghost-dark { border-color: var(--black); color: var(--black); }
 .btn.ghost-dark:hover { background: var(--black); color: #fff; }
