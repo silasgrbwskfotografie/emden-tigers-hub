@@ -169,6 +169,10 @@ App.pages.dashboard = async (view) => {
     const d = daysUntil(m.deadline), open = magChecklist(m).filter(c => !c[1]).map(c => c[0]);
     if (d <= 14 && open.length) notes.push(`Stadionheft „${esc(magLabel(m))}“: ${d < 0 ? 'Redaktionsschluss war am' : 'Redaktionsschluss am'} ${fmtDate(m.deadline)}, noch offen: ${esc(open.join(', '))}. <a class="btn sm" href="#/magazine/${m.id}">Ansehen</a>`);
   });
+  if (can('mitglieder')) {
+    const reqs = (await load('contact_requests', true)).filter(r => r.status === 'Neu').length;
+    if (reqs) notes.push(`${reqs} neue Anfrage${reqs > 1 ? 'n' : ''} über die Webseite. <a class="btn sm" href="#/contacts">Ansehen</a>`);
+  }
   if (dash.finance?.open) notes.push(`${dash.finance.open} offene Buchung(en) in den Finanzen. <a class="btn sm" href="#/finance">Ansehen</a>`);
   if (me.member_id === null && !me.is_admin) notes.push('Dein Zugang ist noch keinem Mitgliedsprofil zugeordnet. Das macht der Admin unter Konten.');
 
@@ -1226,11 +1230,37 @@ function editApparelFields(a) {
 }
 
 /* ====================================================================== */
+/* Anfragen über das Kontaktformular der Webseite */
+const CONTACT_STATUS = ['Neu', 'In Bearbeitung', 'Erledigt'];
+F.contact_requests = [
+  { key: 'status', label: 'Status', type: 'select', options: CONTACT_STATUS },
+  { key: 'created', label: 'Eingang', type: 'text' },
+  { key: 'name', label: 'Name' },
+  { key: 'email', label: 'E-Mail' },
+  { key: 'phone', label: 'Telefon' },
+  { key: 'source', label: 'Über' },
+  { key: 'message', label: 'Nachricht', type: 'textarea', rows: 6 },
+  { key: 'notes', label: 'Interne Notizen', type: 'textarea', rows: 3 },
+];
+App.pages.contacts = simpleList({
+  table: 'contact_requests', title: 'Anfragen', fields: F.contact_requests, newTitle: 'Anfrage',
+  sub: l => `${l.filter(r => r.status === 'Neu').length} neu, ${l.length} insgesamt. Kommen über das Formular auf der Webseite (Probetraining).`,
+  sort: (a, b) => (CONTACT_STATUS.indexOf(a.status) - CONTACT_STATUS.indexOf(b.status)) || (b.created || '').localeCompare(a.created || ''),
+  columns: [
+    { label: 'Eingang', html: r => `<span class="small">${fmtStamp(r.created)}</span>` },
+    { label: 'Name', html: r => `<b>${esc(r.name || '')}</b><div class="muted small">${esc((r.message || '').slice(0, 90))}${(r.message || '').length > 90 ? ' ...' : ''}</div>` },
+    { label: 'Kontakt', html: r => [r.email ? `<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>` : '', r.phone ? `<a href="tel:${esc(r.phone)}">${esc(r.phone)}</a>` : ''].filter(Boolean).join('<br>') },
+    { label: 'Status', html: r => `<span class="badge ${r.status === 'Neu' ? 'red' : r.status === 'Erledigt' ? 'ok' : 'warn'}">${esc(r.status || 'Neu')}</span>` },
+  ],
+});
+
+/* ====================================================================== */
 /* Änderungsprotokoll (nur Admins) */
 const TABLE_NAMES = { posts: 'Postplan', games: 'Spielplan', players: 'Kader & Staff', opponents: 'Gegner', sponsors: 'Sponsoren', media: 'Mediathek',
   media_team: 'Media Team', assignments: 'Einteilung', members: 'Mitglieder', transactions: 'Buchungen', supporter_cards: 'Supporter Karte',
   magazines: 'Stadionheft', magazine_pages: 'Stadionheft-Beitrag', apparel: 'Teamkleidung', apparel_orders: 'Bestellung', story_rules: 'Story-Regel',
-  settings: 'Einstellungen', social: 'Auto-Posting', users: 'Konten', groups: 'Gruppen', backup: 'Backup', sheet_players: 'Social Media Spieler' };
+  settings: 'Einstellungen', social: 'Auto-Posting', users: 'Konten', groups: 'Gruppen', backup: 'Backup', sheet_players: 'Social Media Spieler',
+  contact_requests: 'Anfragen' };
 
 App.pages.log = async (view) => {
   const rows = await api('admin/log?limit=1000');
@@ -1304,6 +1334,23 @@ App.pages.cards = async (view) => {
 
 /* ====================================================================== */
 /* Einstellungen */
+// Texte der öffentlichen Webseite (Schlüssel site_* in den Einstellungen, siehe DEFAULT_SETTINGS in server.py)
+const SITE_FIELDS = [
+  { key: 'site_hero_title', label: 'Startseite: große Überschrift', hint: 'Leer lassen für den Vereinsnamen.' },
+  { key: 'site_contact_email', label: 'Kontakt-E-Mail', hint: 'Steht im Footer, Anfragen aus dem Kontaktformular gehen hierhin.' },
+  { key: 'site_hero_text', label: 'Startseite: Satz unter der Überschrift', type: 'textarea', rows: 2 },
+  { key: 'site_about', label: 'Startseite: Wer wir sind', type: 'textarea', rows: 4 },
+  { key: 'site_training_times', label: 'Trainingszeiten (eine Zeile pro Termin)', type: 'textarea', rows: 3 },
+  { key: 'site_training_place', label: 'Trainingsort' },
+  { key: 'site_training_address', label: 'Adresse Trainingsort' },
+  { key: 'site_trial_text', label: 'Probetraining: Hinweise (mitbringen, Alter, Ausrüstung)', type: 'textarea', rows: 3 },
+  { key: 'site_home_address', label: 'Adresse Heimspielort' },
+  { key: 'site_gameday_text', label: 'Spieltag: Infos für Zuschauer (Parken, Essen, Kinder)', type: 'textarea', rows: 3 },
+  { key: 'site_card_short', label: 'Supporter Karte: Kurztext für die Startseite', type: 'textarea', rows: 2 },
+  { key: 'site_card_text', label: 'Supporter Karte: Leistungen und wo es sie gibt', type: 'textarea', rows: 3 },
+  { key: 'site_sponsor_text', label: 'Sponsoren: Sponsor werden (Ansprechpartner, Möglichkeiten)', type: 'textarea', rows: 3 },
+];
+
 App.pages.settings = async (view) => {
   const s = App.settings;
   const fields = [
@@ -1330,6 +1377,10 @@ App.pages.settings = async (view) => {
       <div class="btn-row"><a class="btn" href="#/accounts">Konten</a><a class="btn" href="#/groups">Gruppen &amp; Rechte</a></div></div>
     <div class="card" style="margin-bottom:16px"><form class="form" id="st_form" onsubmit="return false">${fields.map(f => fieldHtml(f, s[f.key])).join('')}</form>
       <div class="btn-row" style="margin-top:16px"><button class="btn primary" id="st_save">Speichern</button></div></div>
+    <div class="card" style="margin-bottom:16px"><h2>Webseite</h2>
+      <p class="muted small">Texte der öffentlichen Webseite. Spielplan, Kader, Coaches und Sponsoren kommen automatisch aus dem Hub. Leere Felder erscheinen auf der Seite als gelb markierter Platzhalter. Keine Gedankenstriche verwenden.</p>
+      <form class="form" id="site_form" onsubmit="return false">${SITE_FIELDS.map(f => fieldHtml(f, s[f.key])).join('')}</form>
+      <div class="btn-row" style="margin-top:16px"><button class="btn primary" id="site_save">Webseite speichern</button><a class="btn" href="/" target="_blank" rel="noopener">Webseite ansehen</a></div></div>
     <div class="card"><h2>Datensicherung</h2>
       <p class="muted">Der Server legt jede Nacht automatisch eine Sicherung der Datenbank an. Das Backup-ZIP enthält alle Daten und Bilder, aber keine Passwörter.</p>
       <div class="btn-row"><a class="btn dark" href="/api/backup">Backup herunterladen (ZIP)</a><a class="btn" href="/api/export" download="emden-tigers-hub-export.json">Daten als JSON</a>
@@ -1406,6 +1457,11 @@ App.pages.settings = async (view) => {
   $('#st_save').onclick = async () => {
     App.settings = await api('settings', 'PUT', readForm($('#st_form'), fields));
     applyBranding(); toast('Einstellungen gespeichert');
+  };
+  $('#site_save').onclick = async () => {
+    const vals = readForm($('#site_form'), SITE_FIELDS);
+    if (Object.values(vals).some(hasDashes) && !confirmBox('In den Texten stehen Gedankenstriche. Trotzdem speichern?')) return;
+    App.settings = await api('settings', 'PUT', vals); toast('Webseite gespeichert');
   };
   $('#rs_btn').onclick = () => $('#rs_file').click();
   $('#rs_file').onchange = async e => {

@@ -289,6 +289,16 @@ TABLES = {
         "image": "TEXT",
         "answers": "TEXT",                         # Behind the Helmet: JSON {Frage: Antwort}
     },
+    "contact_requests": {                       # Anfragen über das Kontaktformular der Webseite
+        "name": "TEXT",
+        "email": "TEXT",
+        "phone": "TEXT",
+        "message": "TEXT",
+        "source": "TEXT",                          # z. B. Probetraining
+        "status": "TEXT DEFAULT 'Neu'",            # Neu / In Bearbeitung / Erledigt
+        "created": "TEXT",
+        "notes": "TEXT",
+    },
     "apparel": {                                # Teamkleidung: ein Eintrag pro Artikel, z. B. Hoodie 2027
         "name": "TEXT",
         "description": "TEXT",
@@ -368,7 +378,7 @@ TABLE_AREA = {
     "posts": "medien", "media": "medien", "sheet_players": "medien", "sheet_log": "medien",
     "media_team": "medien", "assignments": "medien", "magazines": "medien", "magazine_pages": "medien", "story_rules": "medien",
     "games": "verein", "opponents": "verein", "players": "verein", "sponsors": "verein",
-    "members": "mitglieder",
+    "members": "mitglieder", "contact_requests": "mitglieder",
     "supporter_cards": "finanzen", "transactions": "finanzen",
     "apparel": "verein", "apparel_orders": "verein",
 }
@@ -1225,6 +1235,7 @@ NOTIFY_KINDS = {
     "magazine_deadline": ("Stadionheft: Redaktionsschluss naht (7, 3, 1 Tag vorher und am Tag)", ("medien",)),
     "apparel_orders": ("Teamkleidung: neue Bestellungen (höchstens einmal pro Stunde gesammelt)", APPAREL_ANY),
     "apparel_deadline": ("Teamkleidung: Bestellschluss naht und Zusammenfassung danach", APPAREL_ANY),
+    "contact_request": ("Neue Anfrage über das Kontaktformular der Webseite", ("mitglieder",)),
 }
 SMTP_KEYS = ("smtp_host", "smtp_port", "smtp_security", "smtp_user", "smtp_from", "hub_url")
 NOTIFY_HOUR = 8   # Erinnerungen frühestens ab 8 Uhr
@@ -2203,6 +2214,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_error(404)
         if head == "api" and p[1:2] == ["public"]:
             return self.api_public(method, p[2:])
+        if head == "kontakt" and method == "POST":
+            return self.public_contact()
         # Öffentliche Webseite: Seiten, Dateien unter /web/assets, sonst 404-Seite (Hub-Pfade brauchen weiter Login)
         if method == "GET" and (not p or (len(p) == 1 and head in website.PAGES)):
             return self.send_site(head)
@@ -2370,6 +2383,36 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
+
+    # -- Kontaktformular der Webseite (ohne Login, funktioniert ohne JavaScript) --
+    def public_contact(self):
+        back = lambda res: self.redirect(f"/probetraining?gesendet={res}#kontakt")
+        try:
+            raw = self.read_body(20000).decode("utf-8")
+        except (PayloadTooLarge, UnicodeDecodeError):
+            return back("fehler")
+        f = {k: (v[0] or "").strip() for k, v in parse_qs(raw).items()}
+        if f.get("website"):                       # verstecktes Feld: nur Bots füllen es aus, still verwerfen
+            return back("ok")
+        if not reset_rate_ok("ip", "kontakt:" + self.client_ip()):
+            return back("fehler")
+        name, email, phone, msg = f.get("name", "")[:100], f.get("email", "")[:150], f.get("phone", "")[:40], f.get("message", "")[:3000]
+        if not name or not msg or f.get("consent") != "1" or not (email or phone):
+            return back("fehler")
+        if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+            return back("fehler")
+        now = datetime.now().isoformat(timespec="seconds")
+        with db() as conn:
+            cur = conn.execute("INSERT INTO contact_requests (name, email, phone, message, source, status, created, created_at, updated_at) "
+                               "VALUES (?, ?, ?, ?, 'Probetraining', 'Neu', ?, ?, ?)", (name, email, phone, msg, now, now, now))
+            audit(conn, "Webseite", "neu", "contact_requests", cur.lastrowid, name)
+            to = get_setting(conn, "site_contact_email")
+        text = f"Neue Anfrage über die Webseite (Probetraining)\n\nName: {name}\nE-Mail: {email or '-'}\nTelefon: {phone or '-'}\n\n{msg}"
+        cfg = smtp_config()
+        if to and cfg["smtp_host"]:
+            threading.Thread(target=lambda: send_mail(cfg, to, f"Webseite: Anfrage von {name}", text, footer=False), daemon=True).start()
+        notify_async("contact_request", f"Neue Anfrage von {name}", text + "\n\nIm Hub unter Mitglieder > Anfragen.")
+        return back("ok")
 
     # -- Öffentlicher Bestell-Link (Teamkleidung) -------------------------
     # Nur über den geheimen Link erreichbar. Liefert ausschließlich: Infos zum Artikel, die Bestellfelder,
