@@ -442,7 +442,8 @@ window.addEventListener('hashchange', route);
 /* Handy: Menü als Schublade, App auf dem Startbildschirm */
 $('#navToggle').onclick = () => document.body.classList.toggle('nav-open');
 $('#navShade').onclick = () => document.body.classList.remove('nav-open');
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+// Service Worker nur für den Hub, nicht für die öffentliche Webseite
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js', { scope: '/hub' }).catch(() => {});
 function go(h) { if (location.hash === h) route(); else location.hash = h; }
 
 /* Start erfolgt am Ende von pages.js */

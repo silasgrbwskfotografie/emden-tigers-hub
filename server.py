@@ -1162,7 +1162,7 @@ def send_mail(cfg, to, subject, body, footer=True):
     msg["From"] = cfg["smtp_from"] or cfg["smtp_user"]
     msg["To"] = to
     msg["Subject"] = subject
-    msg.set_content(body + ((f"\n\nZum Hub: {cfg['hub_url']}" if cfg["hub_url"] else "") +
+    msg.set_content(body + ((f"\n\nZum Hub: {cfg['hub_url']}/hub" if cfg["hub_url"] else "") +
                             "\n\nWelche Nachrichten du bekommst, stellst du im Hub unter „Mein Profil“ ein." if footer else ""))
     try:
         port = int(cfg["smtp_port"] or (465 if cfg["smtp_security"] == "ssl" else 587))
@@ -2073,7 +2073,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_file(STATIC / p[0])
         if head == "login" and method == "GET":
             if self.current_user():
-                return self.redirect("/")
+                return self.redirect("/hub")
             if user_count() == 0:
                 return self.redirect("/setup")
             return self.send_html(LOGIN_PAGE)
@@ -2110,6 +2110,9 @@ class Handler(BaseHTTPRequestHandler):
                     and hmac.compare_digest(p[1], share_sig(social_config()["share_key"], name)):
                 return self.serve_under(MEDIA, [name], inline=MEDIA_INLINE)
             return self.send_error(404)
+        if not p and method == "GET":
+            # Vorläufig: die öffentliche Webseite kommt hierher. Alte Lesezeichen (/#/posts) landen so im Hub.
+            return self.redirect("/hub")
 
         # Ab hier nur mit Anmeldung
         user = self.current_user()
@@ -2121,7 +2124,7 @@ class Handler(BaseHTTPRequestHandler):
         if method != "GET" and self.headers.get("X-TMH") != "1":
             return self.send_json({"error": "Ungültige Anfrage"}, 403)
 
-        if not p:
+        if p == ["hub"] and method == "GET":   # der Hub (Mitgliederbereich)
             return self.send_file(STATIC / "index.html")
         if head == "static" and method == "GET":
             return self.serve_under(STATIC, p[1:])
@@ -3018,7 +3021,7 @@ document.getElementById('f').addEventListener('submit', async (e) => {
 });
 </script></body></html>"""
 
-LOGIN_PAGE = (AUTH_PAGE.replace("%%ACTION%%", "/auth/login").replace("%%NEXT%%", "/").replace("%%BODY%%", """
+LOGIN_PAGE = (AUTH_PAGE.replace("%%ACTION%%", "/auth/login").replace("%%NEXT%%", "/hub").replace("%%BODY%%", """
   <div class="field"><label for="u">Benutzername</label><input class="input" id="u" name="username" autocomplete="username" required autofocus></div>
   <div class="field"><label for="p">Passwort</label><input class="input" id="p" name="password" type="password" autocomplete="current-password" required></div>
   <button class="btn primary">Anmelden</button>
@@ -3038,7 +3041,7 @@ FORGOT_SENT_PAGE = (AUTH_PAGE.replace("%%ACTION%%", "/").replace("%%NEXT%%", "/"
   <p class="muted small">Keine Mail bekommen? Dann ist bei deinem Konto vermutlich keine E-Mail-Adresse hinterlegt. Bitte wende dich an den Vorstand bzw. Admin.</p>
   <p class="small" style="text-align:center;margin:14px 0 0"><a href="/login">Zurück zur Anmeldung</a></p>"""))
 
-RESET_PAGE = (AUTH_PAGE.replace("%%ACTION%%", "/auth/reset").replace("%%NEXT%%", "/").replace("%%BODY%%", """
+RESET_PAGE = (AUTH_PAGE.replace("%%ACTION%%", "/auth/reset").replace("%%NEXT%%", "/hub").replace("%%BODY%%", """
   <p style="margin-top:0">Hallo <b>%%NAME%%</b>, leg jetzt dein neues Passwort fest.</p>
   <p class="muted small">Dein Benutzername: <b>%%USER%%</b></p>
   <input type="hidden" name="token" value="%%TOKEN%%">
@@ -3058,7 +3061,7 @@ SETUP_PAGE = (AUTH_PAGE.replace("%%ACTION%%", "/auth/setup").replace("%%NEXT%%",
   <div class="field"><label for="p2">Passwort wiederholen</label><input class="input" id="p2" name="password2" type="password" autocomplete="new-password" required></div>
   <button class="btn primary">Zugang anlegen</button>"""))
 
-INVITE_PAGE = (AUTH_PAGE.replace("%%ACTION%%", "/auth/invite").replace("%%NEXT%%", "/#/profile").replace("%%BODY%%", """
+INVITE_PAGE = (AUTH_PAGE.replace("%%ACTION%%", "/auth/invite").replace("%%NEXT%%", "/hub#/profile").replace("%%BODY%%", """
   <p style="margin-top:0">Hallo <b>%%NAME%%</b>, willkommen im Emden Tigers Hub! Lege jetzt dein Passwort fest.</p>
   <p class="muted small">Dein Benutzername: <b>%%USER%%</b></p>
   <input type="hidden" name="token" value="%%TOKEN%%">
