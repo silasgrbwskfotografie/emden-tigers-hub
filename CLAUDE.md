@@ -12,12 +12,18 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
   - Generische REST-API: `GET/POST /api/<tabelle>`, `GET/PUT/DELETE /api/<tabelle>/<id>`.
   - Spezielle Endpunkte: `/api/me`, `/api/profile`, `/api/admin/users|groups`, `/api/dashboard`, `/api/upload`, `/api/sheet-sync`, `/api/backup`, `/api/restore`, `/api/backups`, `/api/settings`, `/healthz`.
   - Anmeldung: `/login`, `/setup` (nur lokal ohne Benutzer), `/invite/<token>`, `POST /auth/login|logout|setup|invite`.
-- `static/`: Frontend ohne Build-Schritt (Vanilla JS, eine Seite mit Hash-Router).
+- **Öffentliche Webseite unter `/`**, Hub unter **`/hub`** (nur mit Login). `website.py` baut die Seiten serverseitig aus den öffentlichen Daten
+  (`public_info`, `public_games`, `public_team`, `public_sponsors` in server.py), ohne Datenbankzugriff. `web/assets/`: `site.css`, `site.js`,
+  Schriften (Anton, Karla, OFL, lokal), Fotos als WebP in 640/1280/1920 mit `bilder.json` (Alt-Texte). Seitentexte: Einstellungen `site_*`.
+  Öffentliche Schnittstelle `/api/public/<info|spielplan|team|sponsoren>`: nur lesen, jede Antwort Feld für Feld gebaut (Whitelist).
+  Neue öffentliche Felder nur dort ergänzen, nie Datenbankzeilen durchreichen. Kontaktformular `POST /kontakt` -> Tabelle `contact_requests`.
+  Fehlende Inhalte als `placeholder()` (gelb markiert) und in `PLATZHALTER.md` eintragen, nie erfinden.
+- `static/`: Frontend des Hubs ohne Build-Schritt (Vanilla JS, eine Seite mit Hash-Router, ausgeliefert unter `/hub`).
   - `app.js`: API-Helfer, Router, Formular-Generator (`editRecord`, `fieldHtml`), Rechte-Hilfen (`can`, `PAGE_AREA`, `applyPermissions`).
   - `pages.js`: alle Seiten (`App.pages.<name>`), Feld-Definitionen `F.<tabelle>`.
   - `captions.js`: Caption-Vorschläge aus den Vereinsdaten.
   - `style.css`, `logo.png` (Vereinslogo, **nicht verändern**), `icon.png`.
-- Betrieb: `Dockerfile`, `docker-compose.yml` (Hub + Caddy mit HTTPS), `Caddyfile`, `.env` (nicht im Repo), `setup.sh` (Ersteinrichtung), `update.sh` (Update per Git).
+- Betrieb: `Dockerfile` (kopiert `server.py`, `website.py`, `static/`, `web/`), `docker-compose.yml` (Hub + Caddy mit HTTPS), `Caddyfile`, `.env` (nicht im Repo), `setup.sh` (Ersteinrichtung), `update.sh` (Update per Git).
 - Daten zur Laufzeit in `data/` (nicht im Repo): `tigers.db`, `media/`, `backups/`.
 
 ## Rechte-Modell
@@ -33,7 +39,11 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
 
 ## Sicherheit (nicht aufweichen)
 
-- Alles außer `/login`, `/setup`, `/invite`, `/passwort-vergessen`, `/passwort-neu`, `/healthz`, `/bestellen`, `/teilen`, `/manifest.webmanifest`, `/sw.js`, `style.css`, `logo.png`, `icon.png`, `icon-192.png`, `icon-512.png` braucht eine Sitzung.
+- Ohne Sitzung erreichbar: die Webseite (`/`, `/team`, `/spielplan`, `/probetraining`, `/sponsoren`, `/impressum`, `/datenschutz`, `/web/assets/...`, `/api/public/...`, `POST /kontakt`),
+  `/login`, `/setup`, `/invite`, `/passwort-vergessen`, `/passwort-neu`, `/healthz`, `/bestellen`, `/teilen`, `/manifest.webmanifest`, `/sw.js`, `style.css`, `logo.png`, `icon.png`, `icon-192.png`, `icon-512.png`.
+  Alles unter `/hub`, `/static`, `/media` und `/api` (außer `/api/public`) braucht eine Sitzung.
+- Webseite: keine externen Schriften, Tracker oder Einbettungen. Einzige Ausnahme sind die Rechtstexte der IT-Recht Kanzlei auf `/impressum` und `/datenschutz`.
+  Spielerfotos nur mit `players.consent`. Domain/Basisadresse nur über `DOMAIN` in der `.env` (daraus `SITE_URL`).
 - `sw.js` speichert bewusst nichts zwischen (keine Vereinsdaten offline auf dem Handy).
 - Änderungsprotokoll `audit_log` (nicht in `TABLES`, nur `/api/admin/log`, nicht im Backup-Download). `api_table` schreibt bei jedem Anlegen, Ändern, Löschen mit; neue Sonderaktionen mit `audit(...)` ergänzen.
 - Serverumzug (`/api/migrate`, nur Admins): Komplett-Export inkl. Konten, `secrets` und Protokoll, ohne Sitzungen, verschlüsselt mit Passwort

@@ -8,6 +8,8 @@ services:
     environment:
       TMH_SECURE_COOKIES: "1"
       TMH_TRUST_PROXY: "1"
+      # Öffentliche Adresse für Links (Mails, Instagram-Bilder): kommt aus DOMAIN in der .env, nur dort ändern
+      SITE_URL: "https://${DOMAIN}"
     volumes:
       - ./data:/data
     expose:

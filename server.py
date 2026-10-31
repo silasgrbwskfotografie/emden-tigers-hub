@@ -48,7 +48,7 @@ import urllib.error
 
 import website   # öffentliche Webseite (website.py, gleiche Ordnerebene)
 
-VERSION = "3.9"
+VERSION = "4.0"
 APP_NAME = "Emden Tigers Hub"
 ENV = os.environ.get
 HOST = ENV("TMH_HOST", "127.0.0.1")

@@ -1,5 +1,14 @@
 # Änderungen
 
+## 4.0 (31.10.2026)
+- Öffentliche Vereinswebseite unter `/`: Start, Team, Spielplan, Probetraining mit Kontaktformular, Sponsoren und Supporter Karte, Impressum, Datenschutz
+  - Aufbau angelehnt an silasgrbwskfotografie.de, Grafikstil der Vereinsposts (Anton, Rot und Schwarz), mobile first, ohne JavaScript-Pflicht
+  - Spielplan, Kader, Coaches und Sponsoren kommen live aus dem Hub, Spielerfotos nur mit Einwilligung, Texte unter Einstellungen > Webseite
+  - Lokale Schriften, keine Tracker oder Einbettungen, Fotos von silasgrbwsk.fotografie als WebP in drei Größen
+- Hub zieht nach `/hub` (nur mit Login), Weiterleitungen, App, Mails und alte Lesezeichen angepasst
+- Öffentliche Schnittstelle `/api/public` mit festen Feldern, Anfragen aus dem Kontaktformular unter Mitglieder > Anfragen (mit Benachrichtigung)
+- Domain nur noch über `DOMAIN` in der `.env`, HTTPS mit Let's Encrypt als vorbereiteter Schritt in INSTALLATION.md
+
 ## 3.9 (28.10.2026)
 - „Passwort vergessen?“ auf der Anmeldeseite: Link per E-Mail (60 Minuten und nur einmal gültig), danach direkt angemeldet, alle anderen Anmeldungen beendet, Info-Mail über die Änderung
 - Schutz: keine Auskunft, ob ein Konto existiert, Begrenzung pro Verbindung und Konto, gespeichert wird nur ein Hash des Links

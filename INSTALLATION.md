@@ -75,6 +75,32 @@ git checkout main            # später wieder auf den aktuellen Stand
 ```
 Auf dem Server bitte keine Dateien von Hand ändern. `update.sh` bricht sonst ab, damit nichts überschrieben wird.
 
+## Webseite, Domain und HTTPS
+
+Ab Version 4.0 ist unter `/` die **öffentliche Vereinswebseite** erreichbar, der Hub liegt unter **`/hub`** (nur nach Login, im Footer der Webseite als „Mitgliederbereich“ verlinkt). Alte Lesezeichen wie `/#/posts` leiten automatisch nach `/hub#/posts`.
+Spielplan, Kader, Coaches und Sponsoren kommen live aus dem Hub, die übrigen Texte unter **Einstellungen > Webseite**. Was noch fehlt, steht in `PLATZHALTER.md`.
+
+**Deployment per Git** (auf dem Server im Ordner `/opt/EmdenTigersHub`):
+```
+sudo bash update.sh
+```
+Zum Testen eines Branches vor dem Zusammenführen (z. B. in der Test-VM):
+```
+git fetch && git checkout -b webseite origin/webseite   # einmalig
+sudo bash update.sh                                    # holt danach immer den neuesten Stand dieses Branches
+git checkout main                                      # zurück auf main, dann wieder update.sh
+```
+
+**Ohne Domain (jetzt):** In der `.env` steht `DOMAIN=<Server-IP>`. Caddy erzeugt dafür ein eigenes Zertifikat, Besucher sehen einmal eine Browser-Warnung, Logins sind trotzdem verschlüsselt.
+
+**Mit Domain (später, vorbereitet):**
+1. Beim Domain-Anbieter einen **A-Eintrag** (und bei IPv6 AAAA) auf die Server-IP setzen, z. B. `emdentigers.de` und `www.emdentigers.de`.
+2. Ports **80 und 443** in der Firewall des Anbieters offen lassen.
+3. In der `.env` nur `DOMAIN=emdentigers.de` setzen (und `ACME_EMAIL` auf eine echte Adresse).
+4. `docker compose up -d` (oder `sudo bash update.sh`). Caddy holt das Let's-Encrypt-Zertifikat beim ersten Aufruf selbst und erneuert es automatisch.
+
+Alle Links (Mails, Passwort-Reset, Instagram-Bilder) ziehen aus `DOMAIN` mit. Nur unter Einstellungen > E-Mail-Versand und Auto-Posting > Einrichtung prüfen, ob dort noch eine alte Adresse von Hand eingetragen ist.
+
 ## Serverumzug (alles mitnehmen)
 
 Für den Umzug auf einen neuen Server gibt es unter **Einstellungen > Serverumzug** einen Komplett-Export. Er enthält **alles**: Vereinsdaten, Bilder und Videos, Konten mit Passwörtern, Gruppen und Rechte, Facebook-Verbindung, E-Mail-Versand und das Protokoll.
