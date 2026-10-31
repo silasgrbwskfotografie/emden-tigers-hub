@@ -153,6 +153,16 @@ p { margin: 0 0 1em; }
 .legal { padding-top: 40px; }
 .legal h1 { font-size: clamp(36px, 9vw, 64px); }
 
+/* Sponsor der Webseite, über dem Footer auf jeder Seite (heller Grund, weil das Logo dunkel ist) */
+.site-sponsor { background: #fff; border-top: 4px solid var(--red); text-align: center; padding: 36px 16px 32px; }
+.site-sponsor .eyebrow { margin-bottom: 14px; }
+.sp-logo { display: inline-block; }
+.sp-logo img { width: min(300px, 80vw); height: auto; margin: 0 auto 12px; transition: transform .2s; }
+.sp-logo:hover img { transform: scale(1.03); }
+.site-sponsor p { margin: 0 auto 8px; max-width: 560px; color: var(--muted); font-size: 15px; }
+.sp-links { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 22px; }
+.sp-links a { font: 800 13px/1 var(--text); letter-spacing: 2px; text-transform: uppercase; text-decoration: none; }
+
 /* Fußzeile */
 .site-foot { background: var(--black); color: #bbb; padding: 48px 0 24px; font-size: 15px; }
 .site-foot a { color: #fff; text-decoration: none; }

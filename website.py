@@ -20,6 +20,14 @@ LEGAL = {
     "datenschutz": ("Datenschutz", '<div class="itrk-legaltext" data-itrk-legaltext-url="https://itrk.legal/1Cx1.8V.1bQ7-iframe.html"></div> '
                                    '<script src="https://www.it-recht-kanzlei.de/js/itrk-legaltext.js"></script>'),
 }
+# Sponsor der Webseite: erscheint auf jeder Seite über dem Footer (Logo unverändert von silasgrbwskfotografie.de)
+SITE_SPONSOR = {
+    "name": "silasgrbwsk.fotografie",
+    "logo": "sponsor/silasgrbwsk-fotografie.png",
+    "text": "Sportfotografie aus Emden und Ostfriesland",
+    "url": "https://silasgrbwskfotografie.de",
+    "instagram": "silasgrbwsk.fotografie",
+}
 NAV = [("", "Start"), ("team", "Team"), ("spielplan", "Spielplan"), ("probetraining", "Probetraining"), ("sponsoren", "Sponsoren")]
 POSITIONS = ["QB", "RB", "FB", "WR", "TE", "OL", "DL", "DE", "LB", "CB", "S", "K", "P", "LS", "KR/PR", "Athlete"]
 POS_PLURAL = {"QB": "Quarterbacks", "RB": "Runningbacks", "FB": "Fullbacks", "WR": "Wide Receiver", "TE": "Tight Ends", "OL": "Offensive Line",
@@ -123,6 +131,13 @@ def layout(slug, title, description, body, info, extra_head=""):
   <nav class="site-nav">{nav}</nav>
 </header>
 <main>{body}</main>
+<aside class="site-sponsor" aria-label="Sponsor der Webseite">
+  <p class="eyebrow">Diese Webseite wird gesponsert von</p>
+  <a class="sp-logo" href="{SITE_SPONSOR['url']}" target="_blank" rel="noopener sponsored"><img src="{asset(SITE_SPONSOR['logo'])}" alt="{e(SITE_SPONSOR['name'])} Logo" width="500" height="150" loading="lazy"></a>
+  <p>{e(SITE_SPONSOR['text'])}. Teamfotograf der Emden Tigers.</p>
+  <p class="sp-links"><a href="{SITE_SPONSOR['url']}" target="_blank" rel="noopener sponsored">Zur Webseite</a>
+    <a href="https://www.instagram.com/{SITE_SPONSOR['instagram']}/" target="_blank" rel="noopener">Instagram @{e(SITE_SPONSOR['instagram'])}</a></p>
+</aside>
 <footer class="site-foot">
   <div class="foot-grid">
     <div><img class="foot-logo" src="/static/logo.png" alt="" width="444" height="276">
