@@ -55,6 +55,7 @@ SERVER_MODE = ENV("TMH_SERVER") == "1"
 SECURE_COOKIES = ENV("TMH_SECURE_COOKIES") == "1"
 TRUST_PROXY = ENV("TMH_TRUST_PROXY") == "1"
 BACKUP_KEEP = int(ENV("TMH_BACKUP_KEEP", "14"))
+SITE_URL = (ENV("SITE_URL") or "").rstrip("/")   # öffentliche Adresse, z. B. https://emdentigers.de (vorerst die Server-IP)
 MAX_BODY = 300 * 1024 * 1024          # 300 MB (Backup einspielen)
 MAX_JSON = 60 * 1024 * 1024           # 60 MB (Bild-Upload als Base64)
 SESSION_DAYS = 30
@@ -751,7 +752,79 @@ def social_config():
         if not cfg["share_key"]:
             cfg["share_key"] = secrets.token_hex(32)
             secret_set(conn, "share_key", cfg["share_key"])
+    cfg["public_url"] = (cfg["public_url"] or SITE_URL).rstrip("/")
     return cfg
+
+
+# ---------------------------------------------------------------------------
+# Öffentliche Daten für die Webseite (/api/public und die Seiten unter /).
+# Nur hier definierte Felder gehen raus, jede Antwort wird Feld für Feld neu gebaut.
+# Nie: Finanzen, Mitglieder, Kontakte, Konten, Notizen, interne Dateien.
+# ---------------------------------------------------------------------------
+PUBLIC_SETTINGS = ("club_name", "club_short", "season", "instagram", "home_location", "home_city", "entry_fee", "card_price", "training_text")
+
+
+def public_image(path, key):
+    """Signierter Link auf ein einzelnes Bild aus data/media (sonst leer)."""
+    name = (path or "").rsplit("/", 1)[-1]
+    if not (path or "").startswith("/media/") or Path(name).suffix.lower() not in IMAGE_EXT or not (MEDIA / name).is_file():
+        return ""
+    return f"/teilen/{share_sig(key, name)}/{name}"
+
+
+def public_info():
+    with db() as conn:
+        return {k: get_setting(conn, k) for k in PUBLIC_SETTINGS}
+
+
+def public_games():
+    key = social_config()["share_key"]
+    with db() as conn:
+        home_loc = get_setting(conn, "home_location")
+        opp = {r["id"]: r for r in conn.execute("SELECT * FROM opponents")}
+        spon = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM sponsors WHERE active=1")}
+        rows = conn.execute("SELECT * FROM games WHERE IFNULL(date,'') != '' ORDER BY date, time").fetchall()
+    out = []
+    for g in rows:
+        o = opp.get(g["opponent_id"])
+        played = g["score_us"] not in (None, "") and g["score_them"] not in (None, "")
+        out.append({
+            "season": g["season"] or "", "date": g["date"], "time": g["time"] or "", "home": bool(g["home"]), "kind": g["kind"] or "",
+            "league": g["league"] or "", "location": g["location"] or (home_loc if g["home"] else ""),
+            "opponent": {"name": o["name"] or "", "short": o["short"] or "", "city": o["city"] or "", "logo": public_image(o["logo"], key)} if o else None,
+            "score_us": g["score_us"] if played else None, "score_them": g["score_them"] if played else None,
+            "sponsor": spon.get(g["sponsor_id"], ""),
+        })
+    return out
+
+
+def public_team():
+    """Alle aktiven Spieler und Coaches; Foto nur mit Einwilligung (players.consent)."""
+    key = social_config()["share_key"]
+    with db() as conn:
+        rows = conn.execute("SELECT * FROM players WHERE active=1").fetchall()
+    out = []
+    for p in rows:
+        out.append({
+            "kind": p["kind"] or "Spieler", "first_name": p["first_name"] or "", "last_name": p["last_name"] or "",
+            "number": p["number"] or "", "position": p["position"] or "", "unit": p["unit"] or "", "role": p["role"] or "",
+            "photo": public_image(p["photo"], key) if p["consent"] else "",
+        })
+    return out
+
+
+def public_sponsors():
+    key = social_config()["share_key"]
+    with db() as conn:
+        rows = conn.execute("SELECT * FROM sponsors WHERE active=1 ORDER BY name COLLATE NOCASE").fetchall()
+    out = []
+    for s in rows:
+        web = (s["website"] or "").strip()
+        if web and not web.startswith(("http://", "https://")):
+            web = "https://" + web
+        out.append({"name": s["name"] or "", "package": s["package"] or "", "website": web if re.fullmatch(r"https?://[^\s\"'<>]+", web) else "",
+                    "instagram": (s["instagram"] or "").strip().lstrip("@"), "logo": public_image(s["logo"], key)})
+    return out
 
 
 def share_sig(key, name):
@@ -1149,7 +1222,7 @@ def notify_allowed(perms, kind):
 def smtp_config():
     with db() as conn:
         cfg = {k: secret_get(conn, k) for k in (*SMTP_KEYS, "smtp_password", "public_url")}
-    cfg["hub_url"] = (cfg["hub_url"] or cfg["public_url"] or "").rstrip("/")
+    cfg["hub_url"] = (cfg["hub_url"] or SITE_URL or cfg["public_url"] or "").rstrip("/")
     return cfg
 
 
@@ -2110,6 +2183,8 @@ class Handler(BaseHTTPRequestHandler):
                     and hmac.compare_digest(p[1], share_sig(social_config()["share_key"], name)):
                 return self.serve_under(MEDIA, [name], inline=MEDIA_INLINE)
             return self.send_error(404)
+        if head == "api" and p[1:2] == ["public"]:
+            return self.api_public(method, p[2:])
         if not p and method == "GET":
             # Vorläufig: die öffentliche Webseite kommt hierher. Alte Lesezeichen (/#/posts) landen so im Hub.
             return self.redirect("/hub")
@@ -2250,6 +2325,23 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"error": str(e)}, 400)
             return self.send_json({"ok": True})
         return self.send_json({"error": "Unbekannter Pfad"}, 404)
+
+    # -- Öffentliche Schnittstelle für die Webseite (ohne Login, nur lesen) --
+    def api_public(self, method, p):
+        what = p[0] if p else ""
+        if method != "GET" or len(p) != 1:
+            return self.send_json({"error": "Nicht gefunden"}, 404)
+        fn = {"info": public_info, "spielplan": public_games, "team": public_team, "sponsoren": public_sponsors}.get(what)
+        if not fn:
+            return self.send_json({"error": "Nicht gefunden"}, 404)
+        body = json.dumps(fn(), ensure_ascii=False).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "public, max-age=300")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(body)
 
     # -- Öffentlicher Bestell-Link (Teamkleidung) -------------------------
     # Nur über den geheimen Link erreichbar. Liefert ausschließlich: Infos zum Artikel, die Bestellfelder,
