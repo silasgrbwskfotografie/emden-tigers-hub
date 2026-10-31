@@ -1,0 +1,57 @@
+{
+ "hero": {
+  "alt": "Spieler der Emden Tigers feiern mit den Fans, ein Spieler wird jubelnd in die Luft gehoben",
+  "w": 1920,
+  "h": 1080
+ },
+ "team": {
+  "alt": "Spieler der Emden Tigers in roten Trikots stellen sich nach dem Spiel zum Gruppenfoto auf",
+  "w": 1920,
+  "h": 1080
+ },
+ "spiel": {
+  "alt": "Spielszene: Ein Quarterback im weißen Trikot wirft den Ball, die Defense der Emden Tigers stürmt auf ihn zu",
+  "w": 1920,
+  "h": 1536
+ },
+ "training": {
+  "alt": "Training: Ein Spieler blockt gegen ein Schlagpolster, das ein Mitspieler hält",
+  "w": 1077,
+  "h": 1920
+ },
+ "fans": {
+  "alt": "Gruppenfoto mehrerer Football-Teams auf einem Sportplatz",
+  "w": 1920,
+  "h": 1077
+ },
+ "galerie-1": {
+  "alt": "Spielszene: Spieler der Emden Tigers im schwarzen Trikot im Zweikampf mit Gegnern in Weiß",
+  "w": 1920,
+  "h": 1536
+ },
+ "galerie-2": {
+  "alt": "Spielszene: Die Offensive Line der Emden Tigers blockt gegen die gegnerische Defense",
+  "w": 1920,
+  "h": 1536
+ },
+ "galerie-3": {
+  "alt": "Spielszene: Ein Gegner im weißen Trikot trägt den Ball, Spieler der Emden Tigers setzen nach",
+  "w": 1920,
+  "h": 1536
+ },
+ "galerie-4": {
+  "alt": "Spielszene: Gegner in Weiß und Gelb stoppen einen Ballträger, im Hintergrund die Tribüne",
+  "w": 1920,
+  "h": 1080
+ },
+ "galerie-5": {
+  "alt": "Spielszene: Spieler der Emden Tigers in Rot und Schwarz tacklen einen Ballträger",
+  "w": 1920,
+  "h": 1080
+ },
+ "galerie-6": {
+  "alt": "Zwei Spieler der Emden Tigers umarmen sich jubelnd auf dem Spielfeld",
+  "w": 1920,
+  "h": 1304
+ }
+}

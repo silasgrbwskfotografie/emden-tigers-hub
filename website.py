@@ -36,6 +36,13 @@ def e(t):
     return escape(str(t if t is not None else ""), quote=True)
 
 
+def asset(path):
+    """Link auf eine Datei unter web/assets mit Änderungsstempel, damit Browser nach Updates die neue Fassung laden."""
+    f = WEB / "assets" / path
+    v = int(f.stat().st_mtime) if f.is_file() else 0
+    return f"/web/assets/{path}?v={v}"
+
+
 def lines(t):
     return "<br>".join(e(x) for x in str(t or "").splitlines())
 
@@ -105,7 +112,7 @@ def layout(slug, title, description, body, info, extra_head=""):
 <meta name="theme-color" content="#0B0B0B">
 <link rel="icon" href="/static/icon.png">
 <link rel="preload" href="/web/assets/fonts/Anton-Regular.ttf" as="font" type="font/ttf" crossorigin>
-<link rel="stylesheet" href="/web/assets/site.css">
+<link rel="stylesheet" href="{asset('site.css')}">
 <script>if (location.hash.indexOf('#/') === 0) location.replace('/hub' + location.hash);</script>
 {extra_head}
 </head><body class="page-{e(slug or 'start')}">
@@ -130,7 +137,7 @@ def layout(slug, title, description, body, info, extra_head=""):
   </div>
   <p class="copy">© {datetime.now().year} {e(club)}. Fotos: silasgrbwsk.fotografie</p>
 </footer>
-<script src="/web/assets/site.js" defer></script>
+<script src="{asset('site.js')}" defer></script>
 </body></html>"""
 
 
@@ -226,7 +233,7 @@ def page_start(info, games, team, sponsors):
   <div class="games">{"".join(game_card(g, info) for g in played)}</div></section>''' if played else ''}
 <section class="band reveal">
   <div class="wrap band-in"><div><p class="eyebrow light">Probetraining</p><h2>Lust auf Football?</h2>
-    <p>Keine Vorerfahrung nötig. Komm einfach zu einem Training vorbei oder schreib uns vorher.</p></div>
+    <p>Komm zu einem Training vorbei oder schreib uns vorher eine Nachricht.</p></div>
     <a class="btn red" href="/probetraining">Jetzt anfragen</a></div>
 </section>
 {f'''<section class="wrap reveal">{section_head("Partner", "Unsere Sponsoren", '<a class="more" href="/sponsoren">Alle Sponsoren</a>')}

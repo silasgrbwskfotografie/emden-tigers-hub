@@ -12,7 +12,7 @@
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: calc(var(--headh) + 12px); }
 body { margin: 0; font: 17px/1.6 var(--text); color: var(--ink); background: var(--bg); padding-top: var(--headh); }
-img { max-width: 100%; display: block; }
+img { max-width: 100%; height: auto; display: block; }   /* height: auto, damit width/height im HTML nur das Seitenverhältnis vorgeben */
 a { color: var(--red); }
 h1, h2, h3, h4 { font-family: var(--head); font-weight: 400; text-transform: uppercase; letter-spacing: .5px; line-height: 1.02; margin: 0 0 .4em; }
 h1 { font-size: clamp(46px, 13vw, 112px); }
