@@ -58,6 +58,7 @@ const F = {
     { key: 'location', label: 'Spielort', hint: 'Leer lassen bei Heimspielen für den Standard-Ort.' },
     { key: 'league', label: 'Liga' },
     { key: 'sponsor_id', label: 'Spieltagssponsor', type: 'ref', ref: { table: 'sponsors', label: sponsorLabel } },
+    { key: 'stream_url', label: 'Livestream-Link', placeholder: 'https://...', hint: 'Erscheint auf der Webseite als Knopf „Livestream“ beim Spiel.' },
     { key: 'score_us', label: 'Punkte Tigers', type: 'number' },
     { key: 'score_them', label: 'Punkte Gegner', type: 'number' },
     { key: 'quarters', label: 'Viertel', placeholder: '7:0, 14:7, 0:7, 7:0' },
@@ -1506,7 +1507,7 @@ App.pages.website = async (view, args) => {
       $('#wl_reset').onclick = () => { list = WEB_DEFAULT_ORDER.map(k => ({ ...data.layout.find(x => x.key === k), visible: true })); draw(); };
       $('#wl_save').onclick = async () => { data = await api('website', 'PUT', { layout: list.map(x => [x.key, x.visible]) }); list = data.layout.map(x => ({ ...x })); toast('Aufbau gespeichert'); draw(); };
     };
-    const WEB_DEFAULT_ORDER = ['karten', 'wer', 'teams', 'training', 'ergebnisse', 'band', 'sponsoren', 'instagram'];
+    const WEB_DEFAULT_ORDER = ['wer', 'karten', 'teams', 'training', 'ergebnisse', 'band', 'sponsoren', 'instagram'];
     draw();
     return;
   }

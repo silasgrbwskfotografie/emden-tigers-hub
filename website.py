@@ -53,8 +53,8 @@ IMAGE_SLOTS = {
 }
 # Abschnitte der Startseite in der Standard-Reihenfolge (im Hub sortier- und ausblendbar). Titelbild bleibt immer oben.
 START_SECTIONS = {
-    "karten": "Karten: nächstes Spiel, Training, Supporter Karte",
     "wer": "Wer wir sind",
+    "karten": "Nächste Spiele (Herren und Jugend) und Training",
     "teams": "Unsere Teams (Herren und Jugend)",
     "training": "Training und Probetraining",
     "ergebnisse": "Zuletzt gespielt",
@@ -247,7 +247,8 @@ def game_card(g, info, big=False):
       <div class="g-date"><b>{e(fmt_date(g['date'], True))}</b>{f'<span>{e(g["time"])} Uhr</span>' if g['time'] else ''}</div>
       <div class="g-teams">{f'<img src="{e(logo)}" alt="" loading="lazy" width="48" height="48">' if logo else ''}<h3>{teams}</h3></div>
       <div class="g-meta">{f'<span class="tag team">{e(g["team"])}</span>' if g.get("team", "Herren") != "Herren" else ''}<span class="tag">{'Heimspiel' if home else 'Auswärts'}</span>{f'<span>{e(g["league"] or g["kind"])}</span>' if (g["league"] or g["kind"]) else ''}
-        {f'<span>{e(g["location"])}</span>' if g['location'] else ''}</div>{result}</article>"""
+        {f'<span>{e(g["location"])}</span>' if g['location'] else ''}</div>{result}
+      {f'<a class="stream" href="{e(g["stream"])}" target="_blank" rel="noopener">Livestream</a>' if g.get("stream") and g["score_us"] is None else ''}</article>"""
 
 
 def roster(players):
@@ -295,16 +296,11 @@ def team_games(info, games, team, title="Nächste Spiele", skip=0):
 # ---------------------------------------------------------------------------
 def page_start(info, games, team, sponsors, insta, layout_order=None):
     meta = image_meta()
-    ng = next_game(games)
     played = [g for g in games if g["score_us"] is not None][-3:][::-1]
     ig = e(info.get("instagram") or "afc_tigers_emden")
     # Neueste Beiträge aus der Meta-Verbindung, ohne Verbindung die eigenen Galerie-Fotos
     tiles = ([f'<a href="{e(i["url"])}" target="_blank" rel="noopener"><img src="{e(i["image"])}" alt="{e(i["alt"])}" loading="lazy" decoding="async"></a>' for i in insta]
              or [f'<a href="https://www.instagram.com/{ig}/" target="_blank" rel="noopener">{picture(k, "(min-width: 700px) 33vw, 100vw", meta=meta)}</a>' for k in photos("galerie-")[:6]])
-    days = (date.fromisoformat(ng["date"]) - date.today()).days if ng else None
-    next_html = (f"""<p class="eyebrow">Nächstes Spiel</p>{game_card(ng, info, big=True)}
-        <p class="countdown"><b>{'Heute' if days == 0 else days}</b>{'' if days == 0 else (' Tag' if days == 1 else ' Tage')}{' bis zum Kickoff' if days else ' ist Gameday'}</p>"""
-                 if ng else f'<p class="eyebrow">Nächstes Spiel</p><h3>Termine folgen</h3><p>Der Spielplan der Saison {e(info.get("season"))} steht bald hier.</p>')
     hero = f"""
 <section class="hero">
   {picture("hero", "100vw", "hero-img", eager=True, meta=meta)}
@@ -317,13 +313,19 @@ def page_start(info, games, team, sponsors, insta, layout_order=None):
 </section>"""
     order = [k for k, visible in (layout_order or [[k, True] for k in START_SECTIONS]) if visible and k in START_SECTIONS]
     sec = {}
-    sec["karten"] = f"""<section class="cards wrap{'' if order[:1] == ['karten'] else ' cards-flat'}">
-  <div class="card next">{next_html}</div>
-  <div class="card"><p class="eyebrow">Training Herren</p><h3>Komm vorbei</h3><p>{text_or_ph(info.get("site_training_times"), "Trainingszeiten")}</p>
-    <p class="small">{text_or_ph(info.get("site_training_place"), "Trainingsort")}</p><a class="more" href="#training">Alle Infos zum Training</a></div>
-  <div class="card"><p class="eyebrow">Supporter Karte {e(info.get("season"))}</p><h3>Sei dabei</h3>
-    <p>{text_or_ph(info.get("site_card_short"), "Kurztext Supporter Karte")}</p><a class="more" href="/sponsoren#supporter-karte">Mehr erfahren</a></div>
-</section>"""
+    # Nächste Spiele über die volle Breite, Herren und Jugend nebeneinander; darunter das Training beider Teams
+    sec["karten"] = f"""<section class="games-band"><div class="wrap">
+  <div class="sec-head"><p class="eyebrow">Gameday</p><h2>Nächste Spiele</h2><a class="more" href="/spielplan">Ganzer Spielplan</a></div>
+  <div class="next-games">{next_game_card(info, games, "Herren", "Herren")}{next_game_card(info, games, YOUTH, "Jugend")}</div>
+</div></section>
+<section class="wrap train-strip"><div class="card"><p class="eyebrow">Training</p><h3>Komm vorbei</h3>
+  <div class="tr-grid">
+    <div class="tr-block"><p class="tr-team">Herren <span>Tackle Football</span></p><p>{text_or_ph(info.get("site_training_times"), "Trainingszeiten Herren")}</p>
+      <p class="small">{text_or_ph(info.get("site_training_place"), "Trainingsort Herren")}</p></div>
+    <div class="tr-block"><p class="tr-team">Jugend <span>Flag Football</span></p><p>{text_or_ph(info.get("site_youth_training_times"), "Trainingszeiten Jugend")}</p>
+      <p class="small">{text_or_ph(info.get("site_youth_training_place"), "Trainingsort Jugend")}</p></div>
+  </div>
+  <a class="more" href="#training">Alle Infos zum Training</a></div></section>"""
     sec["wer"] = f"""<section class="split wrap reveal">
   <div class="split-img">{picture("team", "(min-width: 900px) 50vw, 100vw", meta=meta)}</div>
   <div class="split-text"><p class="eyebrow">Wer wir sind</p><h2>{e(info.get("club_name") or "Emden Tigers")}</h2>
@@ -373,15 +375,16 @@ def player_card(p):
     return f'<article class="person">{img}{num}<h3>{e(name)}</h3><p>{e(POS_NAME.get(p["position"], p["position"]))}</p></article>'
 
 
-def next_game_card(info, games, team):
-    """Schwarze Karte „Nächstes Spiel“ mit Countdown (wie auf der Startseite), nur für eine Mannschaft."""
+def next_game_card(info, games, team, label="Nächstes Spiel"):
+    """Schwarze Karte „Nächstes Spiel“ einer Mannschaft mit Countdown, Spieltagssponsor und Livestream."""
     ng = next_game([g for g in games if g.get("team", "Herren") == team])
     if not ng:
-        return (f'<div class="card next"><p class="eyebrow">Nächstes Spiel</p><h3>Termine folgen</h3>'
-                f'<p>Der Spielplan der Saison {e(info.get("season"))} steht bald hier.</p></div>')
+        return (f'<div class="card next"><p class="eyebrow">{e(label)}</p><h3>Termine folgen</h3>'
+                f'<p>Der nächste Termin steht hier, sobald er feststeht.</p></div>')
     days = (date.fromisoformat(ng["date"]) - date.today()).days
     when = "<b>Heute</b> ist Gameday" if days == 0 else f"<b>{days}</b>{' Tag' if days == 1 else ' Tage'} bis zum Kickoff"
-    return f'<div class="card next"><p class="eyebrow">Nächstes Spiel</p>{game_card(ng, info, big=True)}<p class="countdown">{when}</p></div>'
+    extra = f'<p class="g-sponsor">Spieltag präsentiert von {e(ng["sponsor"])}</p>' if ng.get("sponsor") else ""
+    return f'<div class="card next"><p class="eyebrow">{e(label)}</p>{game_card(ng, info, big=True)}<p class="countdown">{when}</p>{extra}</div>'
 
 
 def coach_card(p):

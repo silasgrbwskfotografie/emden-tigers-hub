@@ -127,6 +127,7 @@ TABLES = {
         "highlights": "TEXT",
         "notes": "TEXT",
         "team": "TEXT DEFAULT 'Herren'",
+        "stream_url": "TEXT",                   # Livestream-Link (öffentlich auf der Webseite)
     },
     "sponsors": {
         "name": "TEXT",
@@ -861,6 +862,7 @@ def public_games():
             "opponent": {"name": o["name"] or "", "short": o["short"] or "", "city": o["city"] or "", "logo": public_image(o["logo"], key)} if o else None,
             "score_us": g["score_us"] if played else None, "score_them": g["score_them"] if played else None,
             "sponsor": spon.get(g["sponsor_id"], ""),
+            "stream": stream if re.fullmatch(r"https://[^\s\"'<>]+", stream := (g["stream_url"] or "").strip()) else "",
         })
     return out
 

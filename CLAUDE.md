@@ -19,6 +19,7 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
   Neue öffentliche Felder nur dort ergänzen, nie Datenbankzeilen durchreichen. Kontaktformular `POST /kontakt` -> Tabelle `contact_requests`.
   Instagram-Raster: `insta_refresh` holt die neuesten Beiträge über die Meta-Verbindung (alle 30 Minuten, im Hintergrund), speichert die Bilder in `data/instagram`,
   ausgeliefert unter `/web/insta/<datei>`. Nur Bild, Permalink (nur instagram.com) und erste Caption-Zeile als Alt-Text, Besucher laden nichts von Meta.
+  Livestream: `games.stream_url`, öffentlich nur als geprüfter https-Link (`public_games` -> `stream`).
   Mannschaften: `TEAMS` (Herren, Next Generation) in server.py, website.py und pages.js gleich halten. `players.team`, `games.team`.
   Spieler der Next Generation (Minderjährige) gibt `public_team` nie aus, nur deren Coaches und Staff.
   Seiten: Start (mit Training und Probetraining), Herren (oben Infoblöcke mit Training und `next_game_card`, Kader nach Offense/Defense mit `player_card`: Foto nur mit Einwilligung, Position unter dem Namen; dann Coaches mit `coach_card`), Jugend, Spielplan, Sponsoren, Kontakt.

@@ -20,6 +20,8 @@
   - Texte nach Seiten sortiert, Bilder ersetzen (der Browser erzeugt WebP in drei Größen) mit Alt-Text, zurück zum Standardbild
   - Aufbau der Startseite: Abschnitte sortieren und ausblenden
   - Hinweis-Leiste oben auf jeder Seite mit Link und Ablaufdatum
+- Startseite: „Nächste Spiele“ über die volle Breite, Herren und Jugend nebeneinander mit Countdown, darunter Training beider Teams; Titelbild eckig, Supporter Karte oben entfernt
+- Spielplan im Hub: Feld Livestream-Link, auf der Webseite als Knopf „Livestream“ bei kommenden Spielen (nur https-Links)
 - Spielplan: Adresse des Heimspielorts (Folkmar-Allena-Straße 13, 26725 Emden-Wolthusen) und Heimspiel Guide mit Lageplan (im Hub austauschbar)
   - Vorschau als Handy, Tablet oder Desktop
 - Hub zieht nach `/hub` (nur mit Login), Weiterleitungen, App, Mails und alte Lesezeichen angepasst
