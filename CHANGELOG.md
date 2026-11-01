@@ -18,6 +18,7 @@
   - Texte nach Seiten sortiert, Bilder ersetzen (der Browser erzeugt WebP in drei Größen) mit Alt-Text, zurück zum Standardbild
   - Aufbau der Startseite: Abschnitte sortieren und ausblenden
   - Hinweis-Leiste oben auf jeder Seite mit Link und Ablaufdatum
+- Spielplan: Adresse des Heimspielorts (Folkmar-Allena-Straße 13, 26725 Emden-Wolthusen) und Heimspiel Guide mit Lageplan (im Hub austauschbar)
   - Vorschau als Handy, Tablet oder Desktop
 - Hub zieht nach `/hub` (nur mit Login), Weiterleitungen, App, Mails und alte Lesezeichen angepasst
 - Kader und Spielplan: Feld „Mannschaft“ mit Filter (Herren, Next Generation)

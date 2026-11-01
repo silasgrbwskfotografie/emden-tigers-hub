@@ -48,6 +48,7 @@ IMAGE_SLOTS = {
     "spiel": ("Spielszene", "Mannschaftskarte Herren auf der Startseite und Titelbild Spielplan"),
     "training": ("Training", "Titelbild der Seite Kontakt"),
     "fans": ("Fans und Gruppenfoto", "Titelbild der Seite Sponsoren"),
+    "anfahrt": ("Heimspiel Guide", "Spielplan unter „Heimspiele“: Lageplan mit Parkplatz, Eingang, Vereinsheim und Fanbereich"),
     **{f"galerie-{i}": (f"Galerie {i}", "Instagram-Raster auf der Startseite, solange Instagram nicht verbunden ist") for i in range(1, 7)},
 }
 # Abschnitte der Startseite in der Standard-Reihenfolge (im Hub sortier- und ausblendbar). Titelbild bleibt immer oben.
@@ -393,6 +394,11 @@ def page_herren(info, team, games):
 
 def page_schedule(info, games):
     today = date.today().isoformat()
+    meta = image_meta()
+    g = meta.get("anfahrt") or {}
+    # Lageplan zum Vergrößern: größte vorhandene Fassung (eigenes Bild aus dem Hub oder Standard)
+    guide_full = (max(g["src"].items())[1] if g.get("src") else
+                  next((f"/web/assets/img/anfahrt-{w}.webp" for w in sorted(IMG_WIDTHS, reverse=True) if (IMG / f"anfahrt-{w}.webp").is_file()), "")) if g else ""
     def season_block(gs, s):
         gs = [g for g in gs if g["season"] == s]
         up = [g for g in gs if g["date"] >= today]
@@ -416,7 +422,9 @@ def page_schedule(info, games):
     <p>{text_or_ph(info.get("site_home_address"), "Adresse des Heimspielorts")}</p>
     {f'<a class="more" href="https://www.openstreetmap.org/search?query={e(info.get("site_home_address") or loc)}" target="_blank" rel="noopener">Anfahrt auf der Karte</a>' if (info.get("site_home_address") or loc) else ''}</div>
   <div class="card"><p class="eyebrow">Gut zu wissen</p><h3>Am Spieltag</h3><p>{text_or_ph(info.get("site_gameday_text"), "Infos zum Spieltag (Parken, Essen, Kinder)")}</p></div>
-</section>"""
+</section>
+{f'''<section class="wrap guide" id="anfahrt">{section_head("Heimspiel Guide", "So findest du uns")}
+  <a href="{e(guide_full)}" target="_blank" rel="noopener" title="Lageplan groß öffnen">{picture("anfahrt", "(min-width: 1200px) 1160px, 100vw", "guide-img", meta=meta)}</a></section>''' if guide_full else ''}"""
     return layout("spielplan", "Spielplan", "Spielplan, Ergebnisse und Heimspiele der Emden Tigers.", body, info)
 
 

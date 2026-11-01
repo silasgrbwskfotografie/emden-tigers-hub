@@ -8,7 +8,6 @@ Texte, Bilder und Aufbau pflegst du im Hub unter **Medien > Webseite**, ohne Cod
 | Wo auf der Webseite | Was fehlt | Wo pflegen |
 |---|---|---|
 | Footer, jede Seite | Kontakt-E-Mail des Vereins | Medien > Webseite > Texte (Allgemein) |
-| Spielplan, Heimspiele | Adresse des Heimspielorts (für „Anfahrt“) | Medien > Webseite > Texte |
 | Start (Training), Jugend | Trainingszeiten der Flag-Jugend | Medien > Webseite > Texte (Jugend) |
 | Start (Training), Jugend | Trainingsort der Flag-Jugend mit Adresse | Medien > Webseite > Texte (Jugend) |
 | Jugend | Altersgruppen (z. B. 8 bis 15 Jahre) | Medien > Webseite > Texte (Jugend) |

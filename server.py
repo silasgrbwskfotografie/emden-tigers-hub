@@ -371,7 +371,7 @@ DEFAULT_SETTINGS = {
     "site_trial_text": "Du willst Football ausprobieren? Dann komm einfach zu einem Training vorbei. Für den Anfang reichen Sportkleidung, "
                        "Fußball- oder Turnschuhe und etwas zu trinken. Am besten schreibst du uns vorher kurz über das Formular, "
                        "dann wissen wir Bescheid und nehmen dich am Platz in Empfang.",
-    "site_home_address": "",
+    "site_home_address": "Folkmar-Allena-Straße 13, 26725 Emden-Wolthusen",
     "site_gameday_text": "An Heimspieltagen freuen wir uns über jede Unterstützung an der Seitenlinie. Bring Familie und Freunde mit, "
                          "feuer die Tigers an und erlebe American Football aus nächster Nähe. Aktuelle Infos zum Spieltag findest du vorher auf Instagram.",
     "site_card_short": "Unterstütze die Tigers eine ganze Saison lang und zeig, dass du hinter dem Team stehst.",
@@ -396,7 +396,7 @@ DEFAULT_SETTINGS = {
     "web_images": "{}",
     "web_layout": "",
 }
-SITE_TEXTS_VERSION = "1"   # erhöhen, wenn neue Standardtexte in leere Felder bestehender Server übernommen werden sollen
+SITE_TEXTS_VERSION = "2"   # erhöhen, wenn neue Standardtexte in leere Felder bestehender Server übernommen werden sollen
 
 
 DB_LOCK = threading.RLock()   # exklusiv beim Einspielen eines Backups
