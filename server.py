@@ -167,6 +167,9 @@ TABLES = {
         "price": "REAL",
         "paid": "INTEGER DEFAULT 0",
         "notes": "TEXT",
+        "email": "TEXT",                        # bei Online-Bestellung über /supporter-karte
+        "phone": "TEXT",
+        "source": "TEXT",                       # "Online" oder leer (im Hub eingetragen)
     },
     "posts": {
         "date": "TEXT",
@@ -383,6 +386,9 @@ DEFAULT_SETTINGS = {
                          "vom Spieltagssponsor bis zum Trikotsponsor. Schreib uns einfach über das Kontaktformular.",
     "site_contact_email": "",
     "site_shop_url": "https://tigers-emden.fan12.de",   # Fanshop (Menü und Footer der Webseite)
+    # Online-Bestellung der Supporter Karte unter /supporter-karte (an/aus im Hub unter Finanzen > Supporter Karte)
+    "site_card_order_open": "",
+    "site_card_order_text": "Nach deiner Bestellung melden wir uns bei dir mit allen Infos zu Bezahlung und Abholung der Karte.",
     "site_youth_text": "Flag Football ist die kontaktlose Variante des American Football. Statt zu tackeln, ziehen die Spieler dem ballführenden "
                        "Gegner ein Fähnchen vom Gürtel. So lernen Kinder und Jugendliche Werfen, Fangen, Laufen und Taktik, ganz ohne harte "
                        "Zweikämpfe und ohne schwere Ausrüstung.\n\nBei der Next Generation der Emden Tigers stehen Spaß, Bewegung und Teamgeist "
@@ -1460,6 +1466,7 @@ NOTIFY_KINDS = {
     "apparel_orders": ("Teamkleidung: neue Bestellungen (höchstens einmal pro Stunde gesammelt)", APPAREL_ANY),
     "apparel_deadline": ("Teamkleidung: Bestellschluss naht und Zusammenfassung danach", APPAREL_ANY),
     "contact_request": ("Neue Anfrage über das Kontaktformular der Webseite", ("mitglieder",)),
+    "card_order": ("Neue Online-Bestellung einer Supporter Karte", ("finanzen",)),
 }
 SMTP_KEYS = ("smtp_host", "smtp_port", "smtp_security", "smtp_user", "smtp_from", "hub_url")
 NOTIFY_HOUR = 8   # Erinnerungen frühestens ab 8 Uhr
@@ -2441,6 +2448,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_public(method, p[2:])
         if head == "kontakt" and method == "POST":
             return self.public_contact()
+        if head == "supporter-karte" and method == "POST" and len(p) == 1:
+            return self.public_card_order()
         # Öffentliche Webseite: Seiten, Dateien unter /web/assets, sonst 404-Seite (Hub-Pfade brauchen weiter Login)
         if method == "GET" and len(p) == 1 and head in website.REDIRECTS:   # alte Adressen der ersten Fassung
             q = urlparse(self.path).query
@@ -2655,6 +2664,55 @@ class Handler(BaseHTTPRequestHandler):
         notify_async("contact_request", f"Neue Anfrage von {name}", text + "\n\nIm Hub unter Mitglieder > Anfragen.")
         return back("ok")
 
+    # -- Supporter Karte online bestellen (/supporter-karte, ohne Anmeldung) --
+    # Nimmt nur feste Felder an (Name, E-Mail, Telefon, Anzahl 1 bis 5, Nachricht), nur wenn im Hub geöffnet,
+    # mit verstecktem Feld gegen Bots und Begrenzung pro Verbindung. Legt pro Karte einen Eintrag „Online“, unbezahlt an.
+    def public_card_order(self):
+        back = lambda res: self.redirect(f"/supporter-karte?gesendet={res}#bestellen")
+        try:
+            raw = self.read_body(20000).decode("utf-8")
+        except (PayloadTooLarge, UnicodeDecodeError):
+            return back("fehler")
+        f = {k: (v[0] or "").strip() for k, v in parse_qs(raw).items()}
+        if f.get("website"):
+            return back("ok")
+        with db() as conn:
+            is_open, season, price = (get_setting(conn, "site_card_order_open") == "1", get_setting(conn, "season"), get_setting(conn, "card_price"))
+            order_text = get_setting(conn, "site_card_order_text")
+        if not is_open:
+            return back("geschlossen")
+        if not reset_rate_ok("ip", "karte:" + self.client_ip()):
+            return back("fehler")
+        name, email, phone, msg = f.get("name", "")[:100], f.get("email", "")[:150], f.get("phone", "")[:40], f.get("message", "")[:1000]
+        count = int(f["count"]) if f.get("count", "").isdigit() and 1 <= int(f["count"]) <= 5 else 0
+        if not name or not count or f.get("consent") != "1" or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+            return back("fehler")
+        try:
+            price_val = float(str(price).replace(",", "."))
+        except ValueError:
+            price_val = None
+        now = datetime.now()
+        with db() as conn:
+            for i in range(count):
+                cur = conn.execute("INSERT INTO supporter_cards (season, holder, sold_on, price, paid, notes, email, phone, source, created_at, updated_at) "
+                                   "VALUES (?, ?, ?, ?, 0, ?, ?, ?, 'Online', ?, ?)",
+                                   (season, name, now.date().isoformat(), price_val,
+                                    (f"Karte {i + 1} von {count}. " if count > 1 else "") + msg, email, phone, now.isoformat(timespec="seconds"), now.isoformat(timespec="seconds")))
+                audit(conn, "Webseite", "neu", "supporter_cards", cur.lastrowid, f"{name} (Online-Bestellung)")
+            to = get_setting(conn, "site_contact_email")
+        total = f"{price_val * count:.2f} €".replace(".", ",") if price_val is not None else "-"
+        text = (f"Neue Online-Bestellung Supporter Karte {season}\n\nName: {name}\nE-Mail: {email}\nTelefon: {phone or '-'}\n"
+                f"Anzahl: {count}\nSumme: {total}\n\n{msg}")
+        cfg = smtp_config()
+        if cfg["smtp_host"]:
+            if to:
+                threading.Thread(target=lambda: send_mail(cfg, to, f"Supporter Karte: Bestellung von {name}", text, footer=False), daemon=True).start()
+            confirm = (f"Hallo {name},\n\ndanke für deine Bestellung der Supporter Karte {season} der Emden Tigers!\n\n"
+                       f"Anzahl: {count}\nSumme: {total}\n\n{order_text}\n\nSportliche Grüße\nEmden Tigers")
+            threading.Thread(target=lambda: send_mail(cfg, email, "Deine Bestellung: Supporter Karte Emden Tigers", confirm, footer=False), daemon=True).start()
+        notify_async("card_order", f"Supporter Karte: {count} x von {name}", text + "\n\nIm Hub unter Finanzen > Supporter Karte.")
+        return back("ok")
+
     # -- Öffentlicher Bestell-Link (Teamkleidung) -------------------------
     # Nur über den geheimen Link erreichbar. Liefert ausschließlich: Infos zum Artikel, die Bestellfelder,
     # die öffentliche Liste (ohne interne Felder, ohne „bezahlt“) und nimmt neue Bestellungen an.
@@ -2808,6 +2866,23 @@ class Handler(BaseHTTPRequestHandler):
                     return self.deny()
                 return self.send_json(sync_sheet())
 
+            if name == "cards" and p[1:] == ["online"]:   # Online-Bestellung der Supporter Karte an/aus
+                if not can("finanzen", 1):
+                    return self.deny()
+                if method == "PUT":
+                    if not can("finanzen", 2):
+                        return self.deny()
+                    data = self.read_json()
+                    with db() as conn:
+                        if "open" in data:
+                            set_setting(conn, "site_card_order_open", "1" if data["open"] else "")
+                        if "text" in data:
+                            set_setting(conn, "site_card_order_text", str(data["text"])[:2000])
+                        audit(conn, user, "geändert", "settings", None, "Supporter Karte online",
+                              {"Online-Bestellung": ["", "offen" if data.get("open") else "geschlossen"]})
+                with db() as conn:
+                    return self.send_json({"open": get_setting(conn, "site_card_order_open") == "1",
+                                           "text": get_setting(conn, "site_card_order_text"), "url": (SITE_URL or "") + "/supporter-karte"})
             if name == "website":
                 return self.api_website(method, p[1:], user, can)
             if name == "social":

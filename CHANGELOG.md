@@ -24,6 +24,8 @@
 - Spiele zeigen beide Mannschaften mit Logo und Namen (Gegner ohne Logo mit Initialen), Ergebnis in der Reihenfolge der Logos
 - Kontaktseite neu: Formular mit Anliegen als Auswahlkacheln, daneben E-Mail, Instagram, Trainingszeiten und Heimspielort
 - Herren: Coaches vor dem Kader
+- Supporter Karte online bestellen unter /supporter-karte (ohne Anmeldung): im Hub unter Finanzen > Supporter Karte öffnen oder schließen, Link kopieren;
+  Bestellungen erscheinen als „Online“ und unbezahlt mit Kontakt, Benachrichtigung „Neue Online-Bestellung“ und Bestätigungsmail an den Besteller
 - Fanshop (tigers-emden.fan12.de) als roter Knopf im Menü und im Footer, Link im Hub unter Webseite > Texte > Allgemein
 - Spielplan im Hub: Feld Livestream-Link, auf der Webseite als Knopf „Livestream“ bei kommenden Spielen (nur https-Links)
 - Spielplan: Adresse des Heimspielorts (Folkmar-Allena-Straße 13, 26725 Emden-Wolthusen) und Heimspiel Guide mit Lageplan (im Hub austauschbar)

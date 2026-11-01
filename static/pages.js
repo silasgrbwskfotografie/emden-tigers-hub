@@ -95,6 +95,8 @@ const F = {
     { key: 'sold_on', label: 'Verkauft am', type: 'date', default: todayStr() },
     { key: 'price', label: 'Preis (€)', type: 'number', default: App.settings.card_price },
     { key: 'paid', label: 'Bezahlt', type: 'check' },
+    { key: 'email', label: 'E-Mail' },
+    { key: 'phone', label: 'Telefon' },
     { key: 'notes', label: 'Notizen', type: 'textarea', rows: 2 },
   ],
   posts: [
@@ -1319,7 +1321,21 @@ App.pages.cards = async (view) => {
     sub: l => `${l.length} Karten verkauft`,
     extraHead: async list => {
       const seasons = [...new Set(list.map(c => c.season).filter(Boolean))].sort().reverse();
-      return `<div class="grid g${Math.min(Math.max(seasons.length, 1), 3)}" style="margin-bottom:20px">${(seasons.length ? seasons : [s.season]).map(se => {
+      const on = await api('cards/online');
+      const url = on.url.startsWith('http') ? on.url : location.origin + on.url;
+      const open = list.filter(c => c.source === 'Online' && !Number(c.paid)).length;
+      setTimeout(() => {   // Knöpfe erst nach dem Zeichnen der Seite verbinden
+        if ($('#co_copy')) $('#co_copy').onclick = () => { copyText(url); toast('Link kopiert'); };
+        if ($('#co_toggle')) $('#co_toggle').onclick = async () => { await api('cards/online', 'PUT', { open: !on.open }); toast(on.open ? 'Online-Bestellung geschlossen' : 'Online-Bestellung geöffnet'); route(); };
+      });
+      return `<div class="card" style="margin-bottom:16px"><h2>Online-Bestellung ${on.open ? '<span class="badge ok">offen</span>' : '<span class="badge">geschlossen</span>'}</h2>
+        <p class="muted small">Über diesen Link können alle ohne Anmeldung Supporter Karten bestellen. Jede bestellte Karte erscheint unten als „Online“ und unbezahlt,
+          dazu kommt eine Benachrichtigung (Mein Profil) und eine Bestätigung per E-Mail an den Besteller. Den Text zu Bezahlung und Abholung änderst du unter Medien > Webseite.</p>
+        <div class="btn-row"><input class="input" readonly value="${esc(url)}" style="max-width:380px"><button class="btn keep" id="co_copy">Link kopieren</button>
+          <a class="btn keep" href="/supporter-karte" target="_blank" rel="noopener">Ansehen</a>
+          ${can('finanzen', 2) ? `<button class="btn ${on.open ? '' : 'primary'}" id="co_toggle">${on.open ? 'Bestellung schließen' : 'Bestellung öffnen'}</button>` : ''}</div>
+        ${open ? `<div class="warnline" style="margin-top:10px">${open} online bestellte Karte(n) noch nicht bezahlt.</div>` : ''}</div>
+      <div class="grid g${Math.min(Math.max(seasons.length, 1), 3)}" style="margin-bottom:20px">${(seasons.length ? seasons : [s.season]).map(se => {
         const cs = list.filter(c => c.season == se);
         const sum = cs.reduce((a, c) => a + (Number(c.price) || 0), 0);
         const paid = cs.filter(c => Number(c.paid)).reduce((a, c) => a + (Number(c.price) || 0), 0);
@@ -1334,7 +1350,8 @@ App.pages.cards = async (view) => {
     },
     columns: [
       { label: 'Nr.', html: r => esc(r.number || '') },
-      { label: 'Inhaber', html: r => `<b>${esc(r.holder || '')}</b>` },
+      { label: 'Inhaber', html: r => `<b>${esc(r.holder || '')}</b> ${r.source === 'Online' ? '<span class="badge red">Online</span>' : ''}` },
+      { label: 'Kontakt', html: r => [r.email ? `<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>` : '', esc(r.phone || '')].filter(Boolean).join('<br>') },
       { label: 'Saison', html: r => esc(r.season || '') },
       { label: 'Verkauft', html: r => fmtDate(r.sold_on) },
       { label: 'Preis', html: r => eur(r.price) },
@@ -1376,6 +1393,7 @@ const SITE_TEXT_GROUPS = [
   ['Sponsoren', '/sponsoren', [
     { key: 'site_sponsor_text', label: 'Sponsor werden (Ansprechpartner, Möglichkeiten)', type: 'textarea', rows: 4, full: true },
     { key: 'site_card_text', label: 'Supporter Karte: Leistungen und wo es sie gibt', type: 'textarea', rows: 3, full: true },
+    { key: 'site_card_order_text', label: 'Supporter Karte online: So geht es weiter (Bezahlung, Abholung)', type: 'textarea', rows: 3, full: true, hint: 'Steht auf der Bestellseite und in der Bestätigungsmail.' },
   ]],
 ];
 const SITE_NOTICE_FIELDS = [

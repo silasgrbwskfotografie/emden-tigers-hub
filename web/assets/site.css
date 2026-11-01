@@ -238,6 +238,8 @@ p { margin: 0 0 1em; }
 .side-box.dark { background: var(--black); color: #fff; }
 .side-box.dark a { color: #fff; }
 .side-box.dark .small { color: #bbb; }
+.big-price { font: 400 48px/1 var(--head); color: #fff; }
+.contact select { font: inherit; padding: 12px 14px; border: 1px solid var(--line); border-radius: 4px; background: #fff; width: 100%; }
 .msg { padding: 12px 14px; border-radius: 4px; font-weight: 700; }
 .msg.ok { background: #e5f3ea; color: #1d7a46; }
 .msg.err { background: #fbeaeb; color: var(--red); }

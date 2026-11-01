@@ -567,8 +567,39 @@ def page_sponsors(info, sponsors):
   <div class="btns"><a class="btn red" href="/kontakt?anliegen=sponsoring#formular">Sponsor werden</a></div></section>
 <section class="band" id="supporter-karte"><div class="wrap band-in"><div><p class="eyebrow light">Supporter Karte {e(info.get("season"))}</p>
   <h2>{f"{e(info.get('card_price'))} € für die ganze Saison" if info.get("card_price") else placeholder("Preis")}</h2>
-  <p>{text_or_ph(info.get("site_card_text"), "Leistungen der Supporter Karte und wo man sie bekommt")}</p></div></div></section>"""
+  <p>{text_or_ph(info.get("site_card_text"), "Leistungen der Supporter Karte und wo man sie bekommt")}</p></div>
+  {'<a class="btn red" href="/supporter-karte#bestellen">Jetzt bestellen</a>' if info.get("site_card_order_open") == "1" else ''}</div></section>"""
     return layout("sponsoren", "Sponsoren", "Sponsoren und Supporter Karte der Emden Tigers.", body, info)
+
+
+def page_card_order(info, sent=None):
+    """Supporter Karte online bestellen; Formular nur, wenn im Hub geöffnet (site_card_order_open)."""
+    msg = {"ok": '<p class="msg ok">Danke für deine Bestellung! Du bekommst gleich eine Bestätigung per E-Mail, wir melden uns mit allen Infos.</p>',
+           "fehler": '<p class="msg err">Das hat nicht geklappt. Bitte prüfe deine Angaben und versuche es noch einmal.</p>',
+           "geschlossen": '<p class="msg err">Die Online-Bestellung ist gerade geschlossen.</p>'}.get(sent, "")
+    price, season = info.get("card_price"), info.get("season")
+    is_open = info.get("site_card_order_open") == "1"
+    form = f"""<form class="contact" method="post" action="/supporter-karte">
+      <div class="row2"><label>Name (Karteninhaber)<input name="name" required maxlength="100" autocomplete="name"></label>
+        <label>Anzahl Karten<select name="count">{"".join(f'<option value="{n}">{n}</option>' for n in range(1, 6))}</select></label></div>
+      <div class="row2"><label>E-Mail<input name="email" type="email" required maxlength="150" autocomplete="email"></label>
+        <label>Telefon (optional)<input name="phone" maxlength="40" autocomplete="tel"></label></div>
+      <label>Nachricht (optional)<textarea name="message" rows="3" maxlength="1000" placeholder="z. B. weitere Namen bei mehreren Karten"></textarea></label>
+      <label class="hp" aria-hidden="true">Bitte leer lassen<input name="website" tabindex="-1" autocomplete="off"></label>
+      <label class="check"><input type="checkbox" name="consent" value="1" required> Ich bin einverstanden, dass meine Angaben zur Bearbeitung der Bestellung gespeichert werden. Mehr in der <a href="/datenschutz">Datenschutzerklärung</a>.</label>
+      <button class="btn red" type="submit">Verbindlich bestellen</button>
+    </form>""" if is_open else '<p>Die Online-Bestellung ist gerade geschlossen. Schreib uns gern über das <a href="/kontakt?anliegen=sponsoring#formular">Kontaktformular</a>.</p>'
+    body = f"""<section class="page-hero">{picture("fans", "100vw", "hero-img", eager=True)}<div class="hero-text"><p class="eyebrow light">Supporter Karte {e(season)}</p><h1>Sei dabei</h1>
+  <p class="lead">{f"{e(price)} € für die ganze Saison" if price else ""}</p></div></section>
+<section class="wrap contact-wrap" id="bestellen">
+  <div class="contact-main">{section_head("Online bestellen", "Deine Supporter Karte")}{msg}{form}</div>
+  <aside class="contact-side">
+    <div class="side-box dark"><p class="eyebrow">Supporter Karte {e(season)}</p><p><b class="big-price">{f"{e(price)} €" if price else placeholder("Preis")}</b><br>pro Karte und Saison</p></div>
+    <div class="side-box"><p class="eyebrow">Was du bekommst</p><p>{text_or_ph(info.get("site_card_text"), "Leistungen der Supporter Karte")}</p></div>
+    <div class="side-box"><p class="eyebrow">So geht es weiter</p><p>{text_or_ph(info.get("site_card_order_text"), "Hinweis zu Bezahlung und Abholung")}</p></div>
+  </aside>
+</section>"""
+    return layout("supporter-karte", "Supporter Karte", f"Supporter Karte {season} der Emden Tigers online bestellen.", body, info)
 
 
 def page_legal(slug, info):
@@ -582,7 +613,7 @@ def page_404(info):
     return layout("", "Nicht gefunden", "", body, info)
 
 
-PAGES = ("", "herren", "jugend", "spielplan", "sponsoren", "kontakt", "impressum", "datenschutz")
+PAGES = ("", "herren", "jugend", "spielplan", "sponsoren", "kontakt", "supporter-karte", "impressum", "datenschutz")
 
 
 def render(slug, data, sent=None):
@@ -604,6 +635,8 @@ def render_page(slug, data, sent, site):
         return page_jugend(info, data["team"], data["games"])
     if slug == "spielplan":
         return page_schedule(info, data["games"])
+    if slug == "supporter-karte":
+        return page_card_order(info, sent)
     if slug == "kontakt":
         return page_contact(info, sent, data.get("preselect") or "")
     if slug == "sponsoren":
