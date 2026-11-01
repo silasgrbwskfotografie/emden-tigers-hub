@@ -5,6 +5,7 @@ public_sponsors) und baut daraus HTML. Kein Datenbankzugriff, keine internen Fel
 Fehlende Inhalte erscheinen als deutlich markierter Platzhalter (Klasse .ph), siehe PLATZHALTER.md.
 """
 import json
+import re
 import threading
 from datetime import date, datetime
 from html import escape
@@ -575,11 +576,24 @@ def sponsor_tile(s):
             else f'<div class="logo-tile">{inner}</div>')
 
 
+def sponsor_card(s):
+    """Sponsor auf der Sponsorenseite: Logo, Name, Paket aus dem Hub, Webseite und Instagram falls vorhanden."""
+    logo = (f'<img src="{e(s["logo"])}" alt="{e(s["name"])}" loading="lazy">' if s["logo"] else f'<span>{e(s["name"])}</span>')
+    links = []
+    if s["website"]:
+        links.append(f'<a href="{e(s["website"])}" target="_blank" rel="noopener sponsored">Webseite</a>')
+    insta = s.get("instagram") or ""
+    if re.fullmatch(r"[A-Za-z0-9._]{1,30}", insta):
+        links.append(f'<a href="https://www.instagram.com/{e(insta)}/" target="_blank" rel="noopener">@{e(insta)}</a>')
+    return (f'<article class="sponsor-card"><div class="logo-tile">{logo}</div><h3>{e(s["name"])}</h3>'
+            + (f'<p class="pkg">{e(s["package"])}</p>' if s["package"] else '')
+            + (f'<p class="sp-links">{"".join(links)}</p>' if links else '') + '</article>')
+
+
 def page_sponsors(info, sponsors):
-    groups = sorted({s["package"] for s in sponsors}, key=lambda p: PACKAGES.index(p) if p in PACKAGES else 99)
     body = f"""<section class="page-hero">{picture("fans", "100vw", "hero-img", eager=True)}<div class="hero-text"><p class="eyebrow light">Partner</p><h1>Sponsoren</h1></div></section>
-<section class="wrap">{"".join(f'<h3 class="unit">{e(g or "Partner")}</h3><div class="logos">' + "".join(sponsor_tile(s) for s in sponsors if s["package"] == g) + '</div>' for g in groups)
-   or '<p>Unsere Sponsoren stellen wir bald hier vor.</p>'}
+<section class="wrap">{f'<div class="sponsor-grid">{"".join(sponsor_card(s) for s in sorted(sponsors, key=lambda s: PACKAGES.index(s["package"]) if s["package"] in PACKAGES else 99))}</div>' if sponsors
+   else '<p>Unsere Sponsoren stellen wir bald hier vor.</p>'}
   <p>{text_or_ph(info.get("site_sponsor_text"), "Text: Sponsor werden (Ansprechpartner, Möglichkeiten)")}</p>
   <div class="btns"><a class="btn red" href="/kontakt?anliegen=sponsoring#formular">Sponsor werden</a></div></section>
 <section class="band" id="supporter-karte"><div class="wrap band-in"><div><p class="eyebrow light">Supporter Karte {e(info.get("season"))}</p>
