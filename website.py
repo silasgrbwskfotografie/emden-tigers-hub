@@ -587,7 +587,7 @@ def sponsor_card(s):
         links.append(f'<a href="https://www.instagram.com/{e(insta)}/" target="_blank" rel="noopener">@{e(insta)}</a>')
     return (f'<article class="sponsor-card"><div class="logo-tile">{logo}</div><h3>{e(s["name"])}</h3>'
             + (f'<p class="pkg">{e(s["package"])}</p>' if s["package"] else '')
-            + (f'<p class="sp-links">{"".join(links)}</p>' if links else '') + '</article>')
+            + (f'<p class="sc-links">{"".join(links)}</p>' if links else '') + '</article>')
 
 
 def page_sponsors(info, sponsors):
