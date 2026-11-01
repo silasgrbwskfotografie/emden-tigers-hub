@@ -21,6 +21,8 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
   ausgeliefert unter `/web/insta/<datei>`. Nur Bild, Permalink (nur instagram.com) und erste Caption-Zeile als Alt-Text, Besucher laden nichts von Meta.
   Supporter Karte online: `/supporter-karte` (Seite) und `POST /supporter-karte` (`public_card_order`): nur wenn `site_card_order_open` = "1",
   nur feste Felder, Anzahl 1 bis 5, verstecktes Feld, Begrenzung pro IP; legt `supporter_cards` mit `source='Online'`, `paid=0` an. Schalter `/api/cards/online` (Finanzen 2).
+  Google: `structured_head` in website.py (canonical, `org_ld` SportsTeam, `game_ld` SportsEvent mit Zeitzone `berlin_offset`), `/sitemap.xml` und `/robots.txt`
+  ohne Sitzung; absolute Adressen aus `SITE_URL` (sonst Host-Header über `base_url`). Neue öffentliche Seiten auch in `website.sitemap` eintragen.
   Livestream: `games.stream_url`, öffentlich nur als geprüfter https-Link (`public_games` -> `stream`).
   Mannschaften: `TEAMS` (Herren, Next Generation) in server.py, website.py und pages.js gleich halten. `players.team`, `games.team`.
   Spieler der Next Generation (Minderjährige) gibt `public_team` nie aus, nur deren Coaches und Staff.
@@ -53,7 +55,7 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
 
 ## Sicherheit (nicht aufweichen)
 
-- Ohne Sitzung erreichbar: die Webseite (`/`, `/herren`, `/jugend`, `/spielplan`, `/sponsoren`, `/kontakt`, `/supporter-karte` (auch POST), `/impressum`, `/datenschutz`, alte Adressen `/team`, `/next-generation`, `/probetraining` als 301 in `website.REDIRECTS`, `/web/assets/...`, `/web/insta/...`, `/web/site/...`, `/api/public/...`, `POST /kontakt`),
+- Ohne Sitzung erreichbar: die Webseite (`/`, `/herren`, `/jugend`, `/spielplan`, `/sponsoren`, `/kontakt`, `/supporter-karte` (auch POST), `/impressum`, `/datenschutz`, alte Adressen `/team`, `/next-generation`, `/probetraining` als 301 in `website.REDIRECTS`, `/web/assets/...`, `/web/insta/...`, `/web/site/...`, `/sitemap.xml`, `/robots.txt`, `/api/public/...`, `POST /kontakt`),
   `/login`, `/setup`, `/invite`, `/passwort-vergessen`, `/passwort-neu`, `/healthz`, `/bestellen`, `/teilen`, `/manifest.webmanifest`, `/sw.js`, `style.css`, `logo.png`, `icon.png`, `icon-192.png`, `icon-512.png`.
   Alles unter `/hub`, `/static`, `/media` und `/api` (außer `/api/public`) braucht eine Sitzung.
 - Webseite: keine externen Schriften, Tracker oder Einbettungen. Einzige Ausnahme sind die Rechtstexte der IT-Recht Kanzlei auf `/impressum` und `/datenschutz`.

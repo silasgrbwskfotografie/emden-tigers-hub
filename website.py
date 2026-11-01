@@ -156,6 +156,22 @@ def photos(prefix):
 # ---------------------------------------------------------------------------
 # Rahmen: Kopf, Navigation, Fußzeile
 # ---------------------------------------------------------------------------
+def structured_head(slug, info):
+    """canonical-Link, Verein als SportsTeam und die kommenden Spiele als SportsEvent (Startseite, Spielplan, Herren, Jugend)."""
+    base = getattr(_ctx, "base", "")
+    if not base or slug not in PAGES:
+        return ""
+    out = [f'<link rel="canonical" href="{e(base)}/{e(slug)}">', jsonld(org_ld(info, base))]
+    team = {"herren": "Herren", "jugend": YOUTH}.get(slug)
+    if slug in ("", "spielplan") or team:
+        today = date.today().isoformat()
+        upcoming = [g for g in getattr(_ctx, "games", []) if g["date"] >= today and (not team or g.get("team", "Herren") == team)][:12]
+        events = [x for x in (game_ld(g, info, base) for g in upcoming) if x]
+        if events:
+            out.append(jsonld(events if len(events) > 1 else events[0]))
+    return "\n".join(out)
+
+
 def notice_bar(info):
     """Hinweis-Leiste oben (im Hub unter Webseite > Hinweis), nur bis einschließlich zum eingestellten Datum."""
     text, link, until = (info.get("site_notice_text") or "").strip(), (info.get("site_notice_link") or "").strip(), info.get("site_notice_until") or ""
@@ -187,6 +203,7 @@ def layout(slug, title, description, body, info, extra_head=""):
 <meta property="og:image" content="{og_img}"><meta property="og:type" content="website">
 <meta name="theme-color" content="#0B0B0B">
 <link rel="icon" href="/static/icon.png">
+{structured_head(slug, info)}
 <link rel="preload" href="/web/assets/fonts/Anton-Regular.ttf" as="font" type="font/ttf" crossorigin>
 <link rel="stylesheet" href="{asset('site.css')}">
 <script>if (location.hash.indexOf('#/') === 0) location.replace('/hub' + location.hash);</script>
@@ -619,10 +636,79 @@ PAGES = ("", "herren", "jugend", "spielplan", "sponsoren", "kontakt", "supporter
 def render(slug, data, sent=None):
     site = data.get("site") or {}
     _ctx.images = site.get("images") or {}
+    _ctx.base = (data.get("base") or "").rstrip("/")   # absolute Adresse für Google (canonical, strukturierte Daten)
+    _ctx.games = data.get("games") or []
     try:
         return render_page(slug, data, sent, site)
     finally:
-        _ctx.images = {}
+        _ctx.images, _ctx.base, _ctx.games = {}, "", []
+
+
+# ---------------------------------------------------------------------------
+# Google: strukturierte Daten (schema.org als JSON-LD) und Sitemap
+# ---------------------------------------------------------------------------
+def berlin_offset(d):
+    """Zeitzone Emden: Sommerzeit vom letzten Sonntag im März bis zum letzten Sonntag im Oktober."""
+    last_sun = lambda m: max(date(d.year, m, day) for day in range(25, 32) if date(d.year, m, day).weekday() == 6)
+    return "+02:00" if last_sun(3) <= d < last_sun(10) else "+01:00"
+
+
+def jsonld(obj):
+    return '<script type="application/ld+json">' + json.dumps(obj, ensure_ascii=False).replace("</", "<\\/") + "</script>"
+
+
+def org_ld(info, base):
+    club = info.get("club_name") or "Emden Tigers"
+    ig = (info.get("instagram") or "").lstrip("@")
+    obj = {"@context": "https://schema.org", "@type": "SportsTeam", "name": club, "sport": "American Football",
+           "url": base + "/", "logo": base + "/static/logo.png",
+           "location": {"@type": "Place", "name": info.get("home_location") or "", "address": info.get("site_home_address") or ""},
+           "parentOrganization": {"@type": "SportsOrganization", "name": "SV Amisia Stern Wolthusen", "url": "https://www.amisia-stern.de"}}
+    if ig:
+        obj["sameAs"] = [f"https://www.instagram.com/{ig}/"]
+    return obj
+
+
+def game_ld(g, info, base):
+    """Spiel als SportsEvent; nur mit Datum. Ohne Uhrzeit nur das Datum (Google zeigt dann den ganzen Tag)."""
+    club = info.get("club_name") or "Emden Tigers"
+    try:
+        d = date.fromisoformat(g["date"])
+    except (TypeError, ValueError):
+        return None
+    t = (g.get("time") or "").strip()
+    start = f"{g['date']}T{t}:00{berlin_offset(d)}" if len(t) == 5 and t[2] == ":" else g["date"]
+    opp = (g.get("opponent") or {}).get("name") or ""
+    us = {"@type": "SportsTeam", "name": club if g.get("team", "Herren") == "Herren" else f"{club} {g.get('team')}"}
+    them = {"@type": "SportsTeam", "name": opp or "Gegner offen"}
+    home, away = (us, them) if g["home"] else (them, us)
+    loc = g.get("location") or (info.get("home_location") if g["home"] else "") or ""
+    obj = {"@context": "https://schema.org", "@type": "SportsEvent", "name": f"{home['name']} gegen {away['name']}",
+           "sport": "American Football", "startDate": start, "eventStatus": "https://schema.org/EventScheduled",
+           "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode", "homeTeam": home, "awayTeam": away,
+           "location": {"@type": "Place", "name": loc or "Wird noch bekannt gegeben",
+                        **({"address": info.get("site_home_address")} if g["home"] and info.get("site_home_address") else {})},
+           "organizer": {"@type": "SportsTeam", "name": club, "url": base + "/"}, "url": base + "/spielplan", "image": [base + "/static/logo.png"]}
+    if g.get("league") or g.get("kind"):
+        obj["description"] = f"{g.get('league') or g.get('kind')}, {g.get('team', 'Herren')}"
+    if g.get("stream"):
+        obj["eventAttendanceMode"] = "https://schema.org/MixedEventAttendanceMode"
+        obj["location"] = [obj["location"], {"@type": "VirtualLocation", "url": g["stream"]}]
+    return obj
+
+
+def sitemap(base):
+    """sitemap.xml mit allen öffentlichen Seiten."""
+    today = date.today().isoformat()
+    pages = [("", "1.0"), ("herren", "0.8"), ("jugend", "0.8"), ("spielplan", "0.9"), ("sponsoren", "0.6"), ("kontakt", "0.6"),
+             ("supporter-karte", "0.5"), ("impressum", "0.2"), ("datenschutz", "0.2")]
+    rows = "".join(f"<url><loc>{escape(base)}/{s}</loc><lastmod>{today}</lastmod><priority>{p}</priority></url>" for s, p in pages)
+    return f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{rows}</urlset>\n'
+
+
+def robots(base):
+    return ("User-agent: *\nAllow: /\nDisallow: /hub\nDisallow: /api/\nDisallow: /static/\nDisallow: /media/\nDisallow: /login\n"
+            "Disallow: /bestellen/\nDisallow: /teilen/\nDisallow: /invite/\nDisallow: /passwort-\n" + (f"Sitemap: {base}/sitemap.xml\n" if base else ""))
 
 
 def render_page(slug, data, sent, site):

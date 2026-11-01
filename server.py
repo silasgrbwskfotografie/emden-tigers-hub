@@ -2448,6 +2448,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_public(method, p[2:])
         if head == "kontakt" and method == "POST":
             return self.public_contact()
+        if method == "GET" and p in (["sitemap.xml"], ["robots.txt"]):
+            body = (website.sitemap(self.base_url()) if head == "sitemap.xml" else website.robots(self.base_url())).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/xml; charset=utf-8" if head == "sitemap.xml" else "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.end_headers()
+            return self.wfile.write(body)
         if head == "supporter-karte" and method == "POST" and len(p) == 1:
             return self.public_card_order()
         # Öffentliche Webseite: Seiten, Dateien unter /web/assets, sonst 404-Seite (Hub-Pfade brauchen weiter Login)
@@ -2493,10 +2501,17 @@ class Handler(BaseHTTPRequestHandler):
         download = target.name if inline is not None and target.suffix.lower() not in inline else None
         return self.send_file(target, download, cache)
 
+    def base_url(self):
+        """Öffentliche Adresse für Google: SITE_URL aus der .env, sonst der aufgerufene Host (nur gültige Zeichen)."""
+        if SITE_URL:
+            return SITE_URL
+        host = self.headers.get("Host") or ""
+        return f"https://{host}" if re.fullmatch(r"[A-Za-z0-9.\-]+(:\d{1,5})?", host) else ""
+
     def send_site(self, slug, status=200):
         """Seite der öffentlichen Webseite aus den öffentlichen Daten bauen."""
         data = {"info": public_info(), "games": public_games(), "team": public_team(), "sponsors": public_sponsors(),
-                "instagram": public_instagram() if slug == "" else [], "site": public_site()}
+                "instagram": public_instagram() if slug == "" else [], "site": public_site(), "base": self.base_url()}
         q = parse_qs(urlparse(self.path).query)
         sent = (q.get("gesendet") or [None])[0]
         data["preselect"] = (q.get("anliegen") or [""])[0]   # Vorauswahl im Kontaktformular (website.py prüft den Wert)
