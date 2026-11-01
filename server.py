@@ -382,6 +382,7 @@ DEFAULT_SETTINGS = {
                          "Du möchtest die Tigers mit deinem Unternehmen unterstützen? Wir stellen gern ein Paket zusammen, das zu dir passt, "
                          "vom Spieltagssponsor bis zum Trikotsponsor. Schreib uns einfach über das Kontaktformular.",
     "site_contact_email": "",
+    "site_shop_url": "https://tigers-emden.fan12.de",   # Fanshop (Menü und Footer der Webseite)
     "site_youth_text": "Flag Football ist die kontaktlose Variante des American Football. Statt zu tackeln, ziehen die Spieler dem ballführenden "
                        "Gegner ein Fähnchen vom Gürtel. So lernen Kinder und Jugendliche Werfen, Fangen, Laufen und Taktik, ganz ohne harte "
                        "Zweikämpfe und ohne schwere Ausrüstung.\n\nBei der Next Generation der Emden Tigers stehen Spaß, Bewegung und Teamgeist "
@@ -397,7 +398,7 @@ DEFAULT_SETTINGS = {
     "web_images": "{}",
     "web_layout": "",
 }
-SITE_TEXTS_VERSION = "2"   # erhöhen, wenn neue Standardtexte in leere Felder bestehender Server übernommen werden sollen
+SITE_TEXTS_VERSION = "3"   # erhöhen, wenn neue Standardtexte in leere Felder bestehender Server übernommen werden sollen
 
 
 DB_LOCK = threading.RLock()   # exklusiv beim Einspielen eines Backups

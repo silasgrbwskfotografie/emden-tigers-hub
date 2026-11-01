@@ -1349,6 +1349,7 @@ App.pages.cards = async (view) => {
 const SITE_TEXT_GROUPS = [
   ['Allgemein', '/', [
     { key: 'site_contact_email', label: 'Kontakt-E-Mail', hint: 'Steht im Footer und auf der Kontaktseite, Anfragen aus dem Formular gehen hierhin.' },
+    { key: 'site_shop_url', label: 'Fanshop (Link)', placeholder: 'https://...', hint: 'Erscheint als „Fanshop“ im Menü und im Footer. Leer = kein Shop-Link.' },
   ]],
   ['Startseite', '/', [
     { key: 'site_hero_title', label: 'Große Überschrift', hint: 'Leer lassen für den Vereinsnamen.' },

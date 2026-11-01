@@ -21,6 +21,10 @@
   - Aufbau der Startseite: Abschnitte sortieren und ausblenden
   - Hinweis-Leiste oben auf jeder Seite mit Link und Ablaufdatum
 - Startseite: „Nächste Spiele“ über die volle Breite, Herren und Jugend nebeneinander mit Countdown, darunter Training beider Teams; Titelbild eckig, Supporter Karte oben entfernt
+- Spiele zeigen beide Mannschaften mit Logo und Namen (Gegner ohne Logo mit Initialen), Ergebnis in der Reihenfolge der Logos
+- Kontaktseite neu: Formular mit Anliegen als Auswahlkacheln, daneben E-Mail, Instagram, Trainingszeiten und Heimspielort
+- Herren: Coaches vor dem Kader
+- Fanshop (tigers-emden.fan12.de) als roter Knopf im Menü und im Footer, Link im Hub unter Webseite > Texte > Allgemein
 - Spielplan im Hub: Feld Livestream-Link, auf der Webseite als Knopf „Livestream“ bei kommenden Spielen (nur https-Links)
 - Spielplan: Adresse des Heimspielorts (Folkmar-Allena-Straße 13, 26725 Emden-Wolthusen) und Heimspiel Guide mit Lageplan (im Hub austauschbar)
   - Vorschau als Handy, Tablet oder Desktop

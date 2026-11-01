@@ -170,6 +170,10 @@ def notice_bar(info):
 def layout(slug, title, description, body, info, extra_head=""):
     club = info.get("club_name") or "Emden Tigers"
     nav = "".join(f'<a href="/{s}" class="{"active" if s == slug else ""}">{e(l)}</a>' for s, l in NAV)
+    shop = (info.get("site_shop_url") or "").strip()
+    shop = shop if shop.startswith("https://") and not any(c in shop for c in ' "<>') else ""
+    if shop:   # Fanshop als externer Link, im Menü rot hervorgehoben
+        nav += f'<a href="{e(shop)}" class="shop" target="_blank" rel="noopener">Fanshop</a>'
     ig = (info.get("instagram") or "").lstrip("@")
     mail = (info.get("site_contact_email") or "").strip()
     hero = image_meta().get("hero") or {}
@@ -211,7 +215,7 @@ def layout(slug, title, description, body, info, extra_head=""):
       <p>{f'<a href="mailto:{e(mail)}">{e(mail)}</a>' if mail else placeholder("Kontakt-E-Mail")}<br>
       <a href="/kontakt#formular">Kontaktformular</a></p>
       {f'<p><a href="https://www.instagram.com/{e(ig)}/" rel="noopener" target="_blank">Instagram @{e(ig)}</a></p>' if ig else ''}</div>
-    <div><h4>Verein</h4><p><a href="/herren">Herren</a><br><a href="/jugend">Jugend</a><br><a href="/spielplan">Spielplan</a><br><a href="/sponsoren">Sponsoren</a><br><a href="/kontakt">Kontakt</a></p></div>
+    <div><h4>Verein</h4><p><a href="/herren">Herren</a><br><a href="/jugend">Jugend</a><br><a href="/spielplan">Spielplan</a><br><a href="/sponsoren">Sponsoren</a><br><a href="/kontakt">Kontakt</a>{f'<br><a href="{e(shop)}" target="_blank" rel="noopener">Fanshop</a>' if shop else ''}</p></div>
     <div><h4>Rechtliches</h4><p><a href="/impressum">Impressum</a><br><a href="/datenschutz">Datenschutz</a><br><a class="members" href="/hub">Mitgliederbereich</a></p></div>
   </div>
   <p class="copy">© {datetime.now().year} {e(club)}. Fotos: silasgrbwsk.fotografie</p>
@@ -236,16 +240,22 @@ def game_card(g, info, big=False):
     club = info.get("club_short") or "Tigers"
     o = (g.get("opponent") or {}).get("name") or "Gegner offen"
     home = g["home"]
-    teams = f"{e(club)} <span>vs</span> {e(o)}" if home else f"{e(o)} <span>vs</span> {e(club)}"
+    opp_logo = (g.get("opponent") or {}).get("logo")
+    initials = "".join(w[0] for w in o.split()[:2]).upper() if g.get("opponent") else "?"
+    # Beide Mannschaften mit Logo und Name; Heimmannschaft links
+    us_t = f'<div class="team"><span class="t-logo"><img src="/static/logo.png" alt="" width="444" height="276" loading="lazy"></span><b>{e(club)}</b></div>'
+    them_t = (f'<div class="team"><span class="t-logo">' + (f'<img src="{e(opp_logo)}" alt="" loading="lazy">' if opp_logo else f'<i>{e(initials)}</i>')
+              + f'</span><b>{e(o)}</b></div>')
+    teams = f"{us_t}<span class='vs'>vs</span>{them_t}" if home else f"{them_t}<span class='vs'>vs</span>{us_t}"
     result = ""
     if g["score_us"] is not None:
         us, them = int(float(g["score_us"])), int(float(g["score_them"]))
         cls = "win" if us > them else "loss" if us < them else "draw"
-        result = f'<div class="result {cls}">{us}:{them}</div>'
-    logo = (g.get("opponent") or {}).get("logo")
+        left, right = (us, them) if g["home"] else (them, us)   # Ergebnis in derselben Reihenfolge wie die Logos
+        result = f'<div class="result {cls}">{left}:{right}</div>'
     return f"""<article class="game {'big' if big else ''} {'home' if home else 'away'}">
       <div class="g-date"><b>{e(fmt_date(g['date'], True))}</b>{f'<span>{e(g["time"])} Uhr</span>' if g['time'] else ''}</div>
-      <div class="g-teams">{f'<img src="{e(logo)}" alt="" loading="lazy" width="48" height="48">' if logo else ''}<h3>{teams}</h3></div>
+      <div class="g-teams">{teams}</div>
       <div class="g-meta">{f'<span class="tag team">{e(g["team"])}</span>' if g.get("team", "Herren") != "Herren" else ''}<span class="tag">{'Heimspiel' if home else 'Auswärts'}</span>{f'<span>{e(g["league"] or g["kind"])}</span>' if (g["league"] or g["kind"]) else ''}
         {f'<span>{e(g["location"])}</span>' if g['location'] else ''}</div>{result}
       {f'<a class="stream" href="{e(g["stream"])}" target="_blank" rel="noopener">Livestream</a>' if g.get("stream") and g["score_us"] is None else ''}</article>"""
@@ -425,10 +435,10 @@ def page_herren(info, team, games):
     {f'<a class="more" href="https://www.openstreetmap.org/search?query={e(addr)}" target="_blank" rel="noopener">Anfahrt zum Training</a><br>' if addr else ''}
     <a class="btn red" href="/kontakt?anliegen=herren#formular" style="margin-top:12px">Probetraining anfragen</a></div>
 </section>
-{f'''<section class="wrap" id="kader">{section_head("Kader", "Saison " + (info.get("season") or ""))}{kader}
-  <p class="small muted">Fotos zeigen wir nur mit Einverständnis der Spieler.</p></section>''' if kader else ''}
 <section class="wrap" id="coaches">{section_head("Coaching Staff", "Coaches")}
   {f'<div class="coaches">{"".join(coach_card(p) for p in coaches)}</div>' if coaches else '<p>Die Coaches werden bald hier vorgestellt.</p>'}</section>
+{f'''<section class="wrap" id="kader">{section_head("Kader", "Saison " + (info.get("season") or ""))}{kader}
+  <p class="small muted">Fotos zeigen wir nur mit Einverständnis der Spieler.</p></section>''' if kader else ''}
 {team_games(info, games, "Herren", "Weitere Spiele", skip=1)}"""
     return layout("herren", "Herren", "Kader, Coaches und Training der Herrenmannschaft der Emden Tigers.", body, info)
 
@@ -475,28 +485,40 @@ def page_contact(info, sent=None, preselect=""):
     pick = next((v for v, short, _ in CONTACT_TOPICS if short == preselect), CONTACT_TOPICS[0][0])
     mail = (info.get("site_contact_email") or "").strip()
     ig = (info.get("instagram") or "").lstrip("@")
-    topics = "".join(f'<label><input type="radio" name="anliegen" value="{e(v)}" {"checked" if v == pick else ""}> {e(label)}</label>' for v, _, label in CONTACT_TOPICS)
-    body = f"""<section class="page-hero">{picture("training", "100vw", "hero-img", eager=True)}<div class="hero-text"><p class="eyebrow light">Kontakt</p><h1>Schreib uns</h1></div></section>
-<section class="wrap narrow intro"><p>Du willst zum Probetraining kommen, die Tigers als Sponsor unterstützen oder hast eine Frage zum Verein?
-  Schreib uns einfach, wir melden uns so schnell wie möglich bei dir.</p></section>
-<section class="wrap split-info">
-  <div class="card"><p class="eyebrow">E-Mail</p><h3>Direkt schreiben</h3><p>{f'<a href="mailto:{e(mail)}">{e(mail)}</a>' if mail else placeholder("Kontakt-E-Mail")}</p></div>
-  <div class="card"><p class="eyebrow">Instagram</p><h3>@{e(ig or "afc_tigers_emden")}</h3><p>Aktuelles, Spieltage und Einblicke ins Training.</p>
-    <a class="more" href="https://www.instagram.com/{e(ig or "afc_tigers_emden")}/" target="_blank" rel="noopener">Zu Instagram</a></div>
-</section>
-<section class="wrap narrow" id="formular">{section_head("Kontaktformular", "Deine Nachricht")}
-  <p>Zum Probetraining: Trainingszeiten und Ort findest du auf der <a href="/#training">Startseite</a>. Für die Jugend melden sich bitte die Eltern bei uns.</p>
-  {form_msg}
-  <form class="contact" method="post" action="/kontakt">
-    <fieldset class="choice"><legend>Worum geht es?</legend>{topics}</fieldset>
-    <label>Name<input name="name" required maxlength="100" autocomplete="name"></label>
-    <label>E-Mail<input name="email" type="email" maxlength="150" autocomplete="email"></label>
-    <label>Telefon (optional)<input name="phone" maxlength="40" autocomplete="tel"></label>
-    <label>Nachricht<textarea name="message" rows="5" required maxlength="3000"></textarea></label>
-    <label class="hp" aria-hidden="true">Bitte leer lassen<input name="website" tabindex="-1" autocomplete="off"></label>
-    <label class="check"><input type="checkbox" name="consent" value="1" required> Ich bin einverstanden, dass meine Angaben zur Beantwortung meiner Anfrage gespeichert werden. Mehr in der <a href="/datenschutz">Datenschutzerklärung</a>.</label>
-    <button class="btn red" type="submit">Nachricht senden</button>
-  </form></section>"""
+    ig = ig or "afc_tigers_emden"
+    hints = {"Probetraining Herren": "Tackle Football, einfach mal mittrainieren", "Probetraining Jugend": "Flag Football für Kinder und Jugendliche",
+             "Sponsoring": "Partner werden oder Supporter Karte", "Allgemeine Frage": "Alles andere rund um den Verein"}
+    topics = "".join(f'<label class="topic"><input type="radio" name="anliegen" value="{e(v)}" {"checked" if v == pick else ""}>'
+                     f'<span><b>{e(label)}</b><small>{e(hints.get(v, ""))}</small></span></label>' for v, _, label in CONTACT_TOPICS)
+    home_addr = info.get("site_home_address")
+    body = f"""<section class="page-hero">{picture("training", "100vw", "hero-img", eager=True)}<div class="hero-text"><p class="eyebrow light">Kontakt</p><h1>Schreib uns</h1>
+  <p class="lead">Probetraining, Sponsoring oder eine Frage zum Verein: Wir melden uns so schnell wie möglich bei dir.</p></div></section>
+<section class="wrap contact-wrap" id="formular">
+  <div class="contact-main">{section_head("Kontaktformular", "Deine Nachricht")}
+    {form_msg}
+    <form class="contact" method="post" action="/kontakt">
+      <fieldset class="topics"><legend>Worum geht es?</legend>{topics}</fieldset>
+      <div class="row2"><label>Name<input name="name" required maxlength="100" autocomplete="name"></label>
+        <label>Telefon (optional)<input name="phone" maxlength="40" autocomplete="tel"></label></div>
+      <label>E-Mail<input name="email" type="email" maxlength="150" autocomplete="email"></label>
+      <label>Nachricht<textarea name="message" rows="6" required maxlength="3000" placeholder="Erzähl uns kurz, worum es geht."></textarea></label>
+      <label class="hp" aria-hidden="true">Bitte leer lassen<input name="website" tabindex="-1" autocomplete="off"></label>
+      <label class="check"><input type="checkbox" name="consent" value="1" required> Ich bin einverstanden, dass meine Angaben zur Beantwortung meiner Anfrage gespeichert werden. Mehr in der <a href="/datenschutz">Datenschutzerklärung</a>.</label>
+      <p class="small muted">E-Mail oder Telefon reicht. Für die Jugend melden sich bitte die Eltern bei uns.</p>
+      <button class="btn red" type="submit">Nachricht senden</button>
+    </form></div>
+  <aside class="contact-side">
+    <div class="side-box dark"><p class="eyebrow">Direkt</p>
+      <p><b>E-Mail</b><br>{f'<a href="mailto:{e(mail)}">{e(mail)}</a>' if mail else placeholder("Kontakt-E-Mail")}</p>
+      <p><b>Instagram</b><br><a href="https://www.instagram.com/{e(ig)}/" target="_blank" rel="noopener">@{e(ig)}</a><br><span class="small">Aktuelles, Spieltage und Einblicke ins Training</span></p></div>
+    <div class="side-box"><p class="eyebrow">Training</p>
+      <p><b>Herren</b><br>{text_or_ph(info.get("site_training_times"), "Trainingszeiten Herren")}<br><span class="small">{text_or_ph(info.get("site_training_place"), "Trainingsort")}</span></p>
+      <p><b>Jugend</b><br>{text_or_ph(info.get("site_youth_training_times"), "Trainingszeiten Jugend")}</p></div>
+    <div class="side-box"><p class="eyebrow">Heimspiele</p>
+      <p><b>{e(info.get("home_location") or "")}</b>{"<br>" + e(home_addr) if home_addr else ""}</p>
+      <a class="more" href="/spielplan#anfahrt">So findest du uns</a></div>
+  </aside>
+</section>"""
     return layout("kontakt", "Kontakt", "Kontakt zu den Emden Tigers: Probetraining für Herren und Jugend, Sponsoring und Fragen zum Verein.", body, info)
 
 
