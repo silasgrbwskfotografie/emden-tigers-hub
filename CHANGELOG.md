@@ -3,6 +3,8 @@
 ## 4.0 (31.10.2026)
 - Öffentliche Vereinswebseite unter `/`: Start (mit Training und Probetraining), Herren, Jugend, Spielplan, Sponsoren und Supporter Karte, Kontakt, Impressum, Datenschutz
   - Herren: Kader direkt auf der Seite nach Offense und Defense, genaue Position unter dem Namen, danach die Coaches
+  - Herren oben wie bei der Jugend: Infoblöcke Training, Trainingsort, Kader, Heimspiele, darunter nächstes Spiel mit Countdown und Probetraining;
+    Coaches als kompakte Querkarten
   - Kontaktformular mit Anliegen (Probetraining Herren, Probetraining Jugend, Sponsoring, Allgemeine Frage)
   - Alte Adressen /team, /next-generation und /probetraining leiten dauerhaft weiter
   - Aufbau angelehnt an silasgrbwskfotografie.de, Grafikstil der Vereinsposts (Anton, Rot und Schwarz), mobile first, ohne JavaScript-Pflicht

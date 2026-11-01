@@ -120,15 +120,26 @@ p { margin: 0 0 1em; }
 .band-in { display: grid; gap: 18px; align-items: center; }
 .band .btn.red { background: var(--black); }
 
-/* Personen */
+/* Herren: oberer Bereich, Kader, Coaches */
+.team-hero { min-height: 58svh; }
+.team-intro { padding-bottom: 24px; }
+.top-info { padding-top: 0; }
+.top-info .card.next .game.big { margin-top: 4px; }
 .people { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 26px; }
 .person { position: relative; background: var(--card); border-radius: 4px; overflow: hidden; box-shadow: 0 6px 18px rgba(0,0,0,.07); }
 .person > img, .no-photo { width: 100%; aspect-ratio: 4/5; object-fit: cover; background: var(--black); }
 .no-photo { display: grid; place-items: center; }
-.no-photo img { width: 60%; height: auto; opacity: .9; }
+.no-photo img { width: 60%; height: auto; }
 .person h3 { font-size: 20px; margin: 10px 12px 2px; }
 .person p { margin: 0 12px 12px; font-size: 14px; color: var(--muted); }
 .num { position: absolute; top: 8px; left: 8px; background: var(--red); color: #fff; font: 400 20px/1 var(--head); padding: 6px 8px; border-radius: 3px; }
+.coaches { display: grid; gap: 12px; }
+.coach { display: flex; align-items: center; gap: 16px; background: var(--card); border-radius: 4px; padding: 12px; box-shadow: 0 6px 18px rgba(0,0,0,.07); border-left: 4px solid var(--red); }
+.c-img { flex: none; width: 88px; height: 88px; border-radius: 4px; overflow: hidden; background: var(--black); display: grid; place-items: center; }
+.c-img img { width: 100%; height: 100%; object-fit: cover; }
+.c-img img.logo { width: 70%; height: auto; object-fit: contain; }
+.coach h4 { font-size: 22px; margin: 0 0 4px; }
+.coach p { margin: 0; color: var(--muted); font-size: 15px; }
 .unit { margin-top: 18px; border-bottom: 3px solid var(--red); display: inline-block; }
 .pos { font-size: 18px; color: var(--muted); margin: 14px 0 10px; }
 
@@ -229,6 +240,7 @@ p { margin: 0 0 1em; }
 /* Größere Bildschirme */
 @media (min-width: 700px) {
   .people { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .coaches { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .logos { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .insta { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .insta a:nth-child(n+4) { display: block; }
@@ -252,6 +264,7 @@ p { margin: 0 0 1em; }
   .split { grid-template-columns: 1fr 1fr; gap: 56px; }
   .games { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .people { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .coaches { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .logos { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .band-in { grid-template-columns: 1fr auto; }
   .foot-grid { grid-template-columns: 1.4fr 1fr 1fr 1fr; }

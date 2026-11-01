@@ -21,7 +21,7 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
   ausgeliefert unter `/web/insta/<datei>`. Nur Bild, Permalink (nur instagram.com) und erste Caption-Zeile als Alt-Text, Besucher laden nichts von Meta.
   Mannschaften: `TEAMS` (Herren, Next Generation) in server.py, website.py und pages.js gleich halten. `players.team`, `games.team`.
   Spieler der Next Generation (Minderjährige) gibt `public_team` nie aus, nur deren Coaches und Staff.
-  Seiten: Start (mit Training und Probetraining), Herren (Kader nach Offense/Defense, Position unter dem Namen, dann Coaches), Jugend, Spielplan, Sponsoren, Kontakt.
+  Seiten: Start (mit Training und Probetraining), Herren (oben Infoblöcke mit Training und `next_game_card`, Kader nach Offense/Defense mit `player_card`: Foto nur mit Einwilligung, Position unter dem Namen; dann Coaches mit `coach_card`), Jugend, Spielplan, Sponsoren, Kontakt.
   Kontaktformular mit Anliegen `CONTACT_TOPICS` (server.py und website.py gleich halten), Vorauswahl per `/kontakt?anliegen=herren|jugend|sponsoring|frage`.
   Standardtexte `site_*` in `DEFAULT_SETTINGS`; neue Texte für bestehende Server: `SITE_TEXTS_VERSION` erhöhen (füllt nur leere Felder).
   Webseite im Hub (`#/website`, Bereich Medien: Lesen 1, Ändern 2): `/api/website` (GET Übersicht mit Checkliste, PUT `texts` nur `site_*` und `layout`),

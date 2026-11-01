@@ -261,15 +261,6 @@ def roster(players):
     return units
 
 
-def person_card(p, coach=False):
-    name = f"{p['first_name']} {p['last_name']}".strip()
-    img = (f'<img src="{e(p["photo"])}" alt="{e(name)}" loading="lazy" decoding="async">' if p["photo"]
-           else '<div class="no-photo"><img src="/static/logo.png" alt="" loading="lazy"></div>')
-    sub = e(p["role"] or p["kind"]) if coach else e(POS_NAME.get(p["position"], p["position"]))
-    num = "" if coach or not p["number"] else f'<span class="num">#{e(p["number"])}</span>'
-    return f'<article class="person">{img}{num}<h3>{e(name)}</h3><p>{sub}</p></article>'
-
-
 def coaches_of(team, which):
     return sorted([p for p in team if p["kind"] != "Spieler" and p.get("team", "Herren") == which],
                   key=lambda p: COACH_ROLES.index(p["role"]) if p["role"] in COACH_ROLES else 99)
@@ -291,9 +282,9 @@ def youth_training_card(info):
     {f'<a class="more" href="https://www.openstreetmap.org/search?query={e(place)}" target="_blank" rel="noopener">Anfahrt auf der Karte</a>' if place else ''}</div>"""
 
 
-def team_games(info, games, team, title="Nächste Spiele"):
+def team_games(info, games, team, title="Nächste Spiele", skip=0):
     today = date.today().isoformat()
-    up = [g for g in games if g.get("team", "Herren") == team and g["date"] >= today][:4]
+    up = [g for g in games if g.get("team", "Herren") == team and g["date"] >= today][skip:skip + 4]   # skip: oben schon gezeigt
     slug = TEAM_SLUG[team]
     return (f'''<section class="wrap reveal">{section_head("Spielplan", title, f'<a class="more" href="/spielplan#{slug}">Ganzer Spielplan</a>')}
   <div class="games">{"".join(game_card(g, info) for g in up)}</div></section>''' if up else '')
@@ -373,22 +364,69 @@ def page_start(info, games, team, sponsors, insta, layout_order=None):
     return layout("", "", "Die Emden Tigers sind die American-Football-Sparte des SV Amisia Stern Wolthusen in Emden. Training, Herren, Jugend, Spielplan und Sponsoren.", body, info)
 
 
+def player_card(p):
+    """Spielerkarte: Foto (nur mit Einwilligung) oder Tiger-Logo, Rückennummer, darunter Name und Position."""
+    name = f"{p['first_name']} {p['last_name']}".strip()
+    img = (f'<img src="{e(p["photo"])}" alt="{e(name)}" loading="lazy" decoding="async">' if p["photo"]
+           else '<div class="no-photo"><img src="/static/logo.png" alt="" loading="lazy"></div>')
+    num = f'<span class="num">#{e(p["number"])}</span>' if p["number"] else ""
+    return f'<article class="person">{img}{num}<h3>{e(name)}</h3><p>{e(POS_NAME.get(p["position"], p["position"]))}</p></article>'
+
+
+def next_game_card(info, games, team):
+    """Schwarze Karte „Nächstes Spiel“ mit Countdown (wie auf der Startseite), nur für eine Mannschaft."""
+    ng = next_game([g for g in games if g.get("team", "Herren") == team])
+    if not ng:
+        return (f'<div class="card next"><p class="eyebrow">Nächstes Spiel</p><h3>Termine folgen</h3>'
+                f'<p>Der Spielplan der Saison {e(info.get("season"))} steht bald hier.</p></div>')
+    days = (date.fromisoformat(ng["date"]) - date.today()).days
+    when = "<b>Heute</b> ist Gameday" if days == 0 else f"<b>{days}</b>{' Tag' if days == 1 else ' Tage'} bis zum Kickoff"
+    return f'<div class="card next"><p class="eyebrow">Nächstes Spiel</p>{game_card(ng, info, big=True)}<p class="countdown">{when}</p></div>'
+
+
+def coach_card(p):
+    """Kompakte Querkarte für Coaches und Staff."""
+    name = f"{p['first_name']} {p['last_name']}".strip()
+    img = (f'<img src="{e(p["photo"])}" alt="{e(name)}" loading="lazy" decoding="async">' if p["photo"]
+           else '<img class="logo" src="/static/logo.png" alt="" loading="lazy">')
+    return f'<article class="coach"><div class="c-img">{img}</div><div><h4>{e(name)}</h4><p>{e(p["role"] or p["kind"])}</p></div></article>'
+
+
 def page_herren(info, team, games):
     players = [p for p in team if p["kind"] == "Spieler" and p.get("team", "Herren") == "Herren"]
     coaches = coaches_of(team, "Herren")
-    kader = "".join(f'<h3 class="unit">{e(u)}</h3><div class="people">' + "".join(person_card(p) for p in ps) + '</div>' for u, ps in roster(players))
-    body = f"""<section class="page-hero">{picture("team", "100vw", "hero-img", eager=True)}<div class="hero-text"><p class="eyebrow light">Tackle Football</p><h1>Herren</h1>
-  <p class="lead">Volle Ausrüstung, volle Leidenschaft: unser Team für echten American Football.</p></div></section>
-<section class="wrap narrow intro"><p>Hinter jedem Spielzug steckt ein ganzes Team. Hier stellen wir dir die Spieler und Coaches der Tigers vor.
-  Manche spielen seit Jahren Football, andere haben erst bei uns angefangen. Alle verbindet die Leidenschaft für den Sport.</p></section>
+    units = roster(players)
+    count = {u: len(ps) for u, ps in units}
+    kader = "".join(f'<h3 class="unit">{e(u)}</h3><div class="people">' + "".join(player_card(p) for p in ps) + "</div>" for u, ps in units)
+    addr = info.get("site_training_address")
+    team_line = " und ".join(x for x in (f"{count.get('Offense', 0)} Offense" if count.get("Offense") else "",
+                                           f"{count.get('Defense', 0)} Defense" if count.get("Defense") else "") if x)
+    body = f"""<section class="page-hero team-hero">{picture("team", "100vw", "hero-img", eager=True)}<div class="hero-text"><p class="eyebrow light">Tackle Football</p><h1>Herren</h1>
+  <p class="lead">Volle Ausrüstung, volle Leidenschaft: unser Team für echten American Football.</p>
+  <div class="btns"><a class="btn red" href="/kontakt?anliegen=herren#formular">Probetraining anfragen</a><a class="btn ghost" href="/spielplan#herren">Spielplan</a></div></div></section>
+<section class="split wrap reveal team-intro">
+  <div class="split-text"><p class="eyebrow">Unser Team</p><h2>Die Herren der Tigers</h2>
+    <p>Hinter jedem Spielzug steckt ein ganzes Team. Bei den Herren spielen Footballer aus Emden und ganz Ostfriesland Tackle Football mit voller Ausrüstung.
+    Manche spielen seit Jahren Football, andere haben erst bei uns angefangen. Neue Spieler sind jederzeit willkommen: Komm einfach zum Probetraining.</p></div>
+  <div class="facts">
+    <div><b>Training</b><span>{lines(info.get("site_training_times")) if (info.get("site_training_times") or "").strip() else placeholder("Trainingszeiten")}</span></div>
+    <div><b>Trainingsort</b><span>{text_or_ph(info.get("site_training_place"), "Trainingsort")}{"<br>" + e(addr) if addr else ""}</span></div>
+    <div><b>Kader</b><span>{f"{len(players)} Spieler" + (f", davon {team_line}" if team_line else "") if players else "wird bald vorgestellt"}<br>{len(coaches)} {"Coach" if len(coaches) == 1 else "Coaches"}</span></div>
+    <div><b>Heimspiele</b><span>{e(info.get("home_location")) or placeholder("Heimspielort")}{f"<br>Eintritt {e(info.get('entry_fee'))} €" if info.get("entry_fee") else ""}</span></div>
+  </div>
+</section>
+<section class="wrap split-info top-info">
+  {next_game_card(info, games, "Herren")}
+  <div class="card"><p class="eyebrow">Probetraining</p><h3>Werde Teil der Tigers</h3>
+    <p>{text_or_ph(info.get("site_trial_text"), "Hinweise zum Probetraining")}</p>
+    {f'<a class="more" href="https://www.openstreetmap.org/search?query={e(addr)}" target="_blank" rel="noopener">Anfahrt zum Training</a><br>' if addr else ''}
+    <a class="btn red" href="/kontakt?anliegen=herren#formular" style="margin-top:12px">Probetraining anfragen</a></div>
+</section>
 {f'''<section class="wrap" id="kader">{section_head("Kader", "Saison " + (info.get("season") or ""))}{kader}
   <p class="small muted">Fotos zeigen wir nur mit Einverständnis der Spieler.</p></section>''' if kader else ''}
 <section class="wrap" id="coaches">{section_head("Coaching Staff", "Coaches")}
-  <div class="people">{"".join(person_card(p, coach=True) for p in coaches) or '<p>Die Coaches werden bald hier vorgestellt.</p>'}</div></section>
-{team_games(info, games, "Herren")}
-<section class="wrap">{section_head("Mitmachen", "Training")}
-  <div class="split-info">{herren_training_cards(info)}</div>
-  <div class="btns"><a class="btn red" href="/kontakt?anliegen=herren#formular">Probetraining anfragen</a></div></section>"""
+  {f'<div class="coaches">{"".join(coach_card(p) for p in coaches)}</div>' if coaches else '<p>Die Coaches werden bald hier vorgestellt.</p>'}</section>
+{team_games(info, games, "Herren", "Weitere Spiele", skip=1)}"""
     return layout("herren", "Herren", "Kader, Coaches und Training der Herrenmannschaft der Emden Tigers.", body, info)
 
 
@@ -483,7 +521,7 @@ def page_jugend(info, team, games):
     <a class="more" href="/kontakt?anliegen=jugend#formular">Zum Kontaktformular</a></div>
 </section>
 <section class="wrap" id="coaches">{section_head("Coaching Staff", "Coaches")}
-  <div class="people">{"".join(person_card(p, coach=True) for p in coaches) or '<p>Die Coaches der Next Generation werden bald hier vorgestellt.</p>'}</div>
+  {f'<div class="coaches">{"".join(coach_card(p) for p in coaches)}</div>' if coaches else '<p>Die Coaches der Next Generation werden bald hier vorgestellt.</p>'}
   <p class="small muted">Zum Schutz der Kinder und Jugendlichen zeigen wir die Spielerinnen und Spieler der Jugend nicht auf der Webseite.</p></section>
 {team_games(info, games, YOUTH, "Nächste Spieltage")}"""
     return layout("jugend", "Jugend", "Next Generation: die Flag-Football-Jugend der Emden Tigers. Kontaktloser Football für Kinder und Jugendliche in Emden.", body, info)
