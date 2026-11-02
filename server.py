@@ -1514,6 +1514,8 @@ def send_mail(cfg, to, subject, body, footer=True):
                 # Nur der erste Anmeldeweg, sonst verdeckt Gmail die Ablehnung mit "Connection unexpectedly closed"
                 s.ehlo_or_helo_if_needed()
                 s.user, s.password = cfg["smtp_user"], cfg["smtp_password"] or ""
+                if cfg["smtp_host"].lower().endswith(("gmail.com", "googlemail.com")):
+                    s.password = "".join(s.password.split())   # App-Passwort wird mit Leerzeichen angezeigt: "abcd efgh ijkl mnop"
                 mech = next((m for m in ("PLAIN", "LOGIN") if m in s.esmtp_features.get("auth", "").upper().split()), None)
                 if mech:
                     s.auth(mech, s.auth_plain if mech == "PLAIN" else s.auth_login)
