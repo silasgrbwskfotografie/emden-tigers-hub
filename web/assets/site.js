@@ -27,10 +27,10 @@ if (liveCard && window.fetch) {
   const el = {
     vs: q('.vs'), score: q('.g-score'), left: q('[data-s="l"]'), right: q('[data-s="r"]'),
     chips: q('.live-chips'), state: q('[data-l="state"]'), period: q('[data-l="period"]'), down: q('[data-l="down"]'), stale: q('[data-l="stale"]'),
-    countdown: q('.countdown'), events: q('.live-events'), link: q('.live-link'),
+    countdown: q('.countdown'),
   };
   const cardGame = Number(liveCard.dataset.game) || 0;
-  let lastScore = null, lastEvents = '', timer = null;
+  let lastScore = null, timer = null;
 
   const show = (node, on) => { if (node && node.hidden === on) node.hidden = !on; };
   const setText = (node, text) => { if (node && node.textContent !== text) node.textContent = text; };
@@ -42,7 +42,7 @@ if (liveCard && window.fetch) {
     else if (d && sameGame && d.status === 'final' && d.updated && d.now - d.updated < FINAL_SHOW) state = 'final';
     const on = state !== 'normal';
     liveCard.classList.toggle('is-live', on);
-    show(el.vs, !on); show(el.score, on); show(el.chips, on); show(el.events, on); show(el.link, on); show(el.countdown, !on);
+    show(el.vs, !on); show(el.score, on); show(el.chips, on); show(el.countdown, !on);
     if (!on) { lastScore = null; return; }
 
     // Spielstand in der Reihenfolge der Logos auf der Karte, score_us gehört immer den Tigers
@@ -64,26 +64,6 @@ if (liveCard && window.fetch) {
     const down = state === 'live' ? (d.down || '') : '';
     setText(el.down, down); show(el.down, !!down);
     show(el.stale, !!d.stale && state !== 'final');
-
-    // Letzte Punkte, neueste oben, höchstens 5
-    const usName = liveCard.dataset.club || 'Tigers';
-    const themName = (d.game && d.game.opponent_short) || liveCard.dataset.opp || d.them_name || 'Gegner';
-    const list = (Array.isArray(d.events) ? d.events : []).slice(-5).reverse();
-    const key = JSON.stringify(list);
-    if (key !== lastEvents) {
-      lastEvents = key;
-      const items = list.map(ev => {
-        const li = document.createElement('li');
-        li.className = ev.us ? 'us' : '';
-        const per = document.createElement('span'); per.className = 'per'; per.textContent = ev.period || '';
-        const what = document.createElement('span'); what.textContent = `${ev.label || ''} ${ev.us ? usName : themName}`;
-        li.append(per, what);
-        if (ev.player) { const p = document.createElement('span'); p.className = 'who'; p.textContent = ev.player; li.append(p); }
-        return li;
-      });
-      if (!items.length) { const li = document.createElement('li'); li.className = 'none'; li.textContent = 'Noch keine Punkte'; items.push(li); }
-      el.events.replaceChildren(...items);
-    }
   };
 
   let seq = 0;

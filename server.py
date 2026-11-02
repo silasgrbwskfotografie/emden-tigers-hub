@@ -2627,8 +2627,6 @@ class Handler(BaseHTTPRequestHandler):
             if not live_rate_ok("pub", self.client_ip(), 120):
                 return self.send_json({"error": "Zu viele Anfragen"}, 429)
             return self.send_json_cors(live_public() if p[1] == "live" else next_game_public())
-        if head == "spielstand" and method == "GET" and len(p) == 1:
-            return self.send_file(STATIC / "spielstand.html")
         if head == "live" and len(p) == 2 and p[1] in ("push", "games"):
             ip = self.client_ip()
             if not live_rate_ok("tok", ip, 300):
@@ -2658,7 +2656,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.serve_under(INSTA_DIR, p[2:], cache=True)
         if method == "GET" and p[:2] == ["web", "site"] and len(p) == 3 and p[2].endswith(".webp"):
             return self.serve_under(SITE_DIR, p[2:], cache=True)
-        if method == "GET" and head not in ("hub", "static", "media", "api"):
+        if method == "GET" and head not in ("hub", "static", "media", "api", "spielstand"):
             return self.send_site("404", 404)
 
         # Ab hier nur mit Anmeldung
@@ -2673,6 +2671,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == ["hub"] and method == "GET":   # der Hub (Mitgliederbereich)
             return self.send_file(STATIC / "index.html")
+        if p == ["spielstand"] and method == "GET":   # Vollbild-Livescore, nur für Angemeldete
+            return self.send_file(STATIC / "spielstand.html")
         if head == "static" and method == "GET":
             return self.serve_under(STATIC, p[1:])
         if head == "media" and method == "GET":

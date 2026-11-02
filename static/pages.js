@@ -1646,7 +1646,7 @@ App.pages.settings = async (view) => {
       <p class="muted small">Highlight Desk meldet den Spielstand an diesen Hub. Die Webseite liest ihn öffentlich (nur Spielstand und Spielinfos, nichts Internes). Beim Abpfiff trägt der Hub den Endstand ins Spiel ein.</p>
       <div class="grid g2"><div><b>Status</b><div class="small muted">${c.configured ? 'Token ist eingerichtet.' : 'Noch kein Token eingerichtet.'}
         ${c.last_push ? ' Letzte Meldung: ' + esc(fmtStamp(new Date(c.last_push * 1000).toISOString())) + ' (' + esc(c.status) + ')' : ' Noch keine Meldung seit dem Start.'}</div></div>
-        <div><b>Adressen</b><div class="small muted">Highlight Desk: <code>${esc(base)}</code><br>Öffentliche Seite: <code>${esc(base)}/spielstand</code><br>Daten für die Webseite: <code>${esc(base)}/public/live</code> und <code>${esc(base)}/public/next-game</code></div></div></div>
+        <div><b>Adressen</b><div class="small muted">Highlight Desk: <code>${esc(base)}</code><br>Vollbild-Livescore (nur angemeldet): <code>${esc(base)}/spielstand</code><br>Daten für die Webseite: <code>${esc(base)}/public/live</code> und <code>${esc(base)}/public/next-game</code></div></div></div>
       <div class="btn-row" style="margin-top:12px"><button class="btn primary" id="lv_new">${c.configured ? 'Neues Token erzeugen' : 'Token erzeugen'}</button>
         ${c.configured ? '<button class="btn danger" id="lv_del">Token löschen</button>' : ''}</div>
       <div id="lv_tok" class="small" style="margin-top:10px"></div>

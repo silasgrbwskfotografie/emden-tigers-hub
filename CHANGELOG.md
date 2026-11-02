@@ -2,10 +2,10 @@
 
 ## 4.1 (02.11.2026)
 - Livescore auf der Startseite: Die Herren-Karte unter „Nächste Spiele“ zeigt während des Spiels den Spielstand statt „VS“,
-  mit LIVE, Viertel oder Halbzeit, Down und den letzten Punkten; danach etwa 2 Stunden „Endstand“. Aktualisiert sich alle 5 Sekunden, nur solange die Seite sichtbar ist
+  mit LIVE, Viertel oder Halbzeit und Down & Distance; danach etwa 2 Stunden „Endstand“. Aktualisiert sich alle 5 Sekunden, nur solange die Seite sichtbar ist
 - Livescore für die Webseite: Highlight Desk meldet den Spielstand an den Hub, die Webseite liest ihn öffentlich
   - Einstellungen > Livescore: Token für Highlight Desk erzeugen (wird nur einmal angezeigt, im Hub nur als Hash gespeichert), Adressen für die Webseite
-  - Öffentlich lesbar (nur Spielstand und Spielinfos, mit CORS, begrenzt pro Verbindung): `/public/live` und `/public/next-game`, dazu die fertige Seite `/spielstand`
+  - Öffentlich lesbar (nur Spielstand und Spielinfos, mit CORS, begrenzt pro Verbindung): `/public/live` und `/public/next-game`, dazu die Vollbildseite `/spielstand` (nur angemeldet)
   - Meldung nur mit Token (`/live/push`), Spieleliste für Highlight Desk (`/live/games`)
   - Beim Abpfiff trägt der Hub den Endstand ins Spiel ein (mit Eintrag im Protokoll)
   - Torschützen sind standardmäßig nicht öffentlich, einschaltbar in den Einstellungen

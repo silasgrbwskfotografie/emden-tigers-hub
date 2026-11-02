@@ -428,11 +428,8 @@ def next_game_card(info, games, team, label="Nächstes Spiel", live=False):
     when = "<b>Heute</b> ist Gameday" if days == 0 else f"<b>{days}</b>{' Tag' if days == 1 else ' Tage'} bis zum Kickoff"
     extra = f'<p class="g-sponsor">Spieltag präsentiert von {e(ng["sponsor"])}</p>' if ng.get("sponsor") else ""
     if live:
-        return (f'<div class="card next" data-live data-game="{ng.get("id") or ""}" data-home="{1 if ng["home"] else 0}" data-club="Tigers"'
-                f' data-opp="{e((ng.get("opponent") or {}).get("short") or (ng.get("opponent") or {}).get("name") or "Gegner")}">'
-                f'<p class="eyebrow">{e(label)}</p>{game_card(ng, info, big=True, live=True)}<p class="countdown">{when}</p>'
-                f'<ol class="live-events" hidden aria-label="Letzte Punkte"></ol>'
-                f'<a class="more live-link" href="/spielstand" hidden>Zum Livescore</a>{extra}</div>')
+        return (f'<div class="card next" data-live data-game="{ng.get("id") or ""}" data-home="{1 if ng["home"] else 0}">'
+                f'<p class="eyebrow">{e(label)}</p>{game_card(ng, info, big=True, live=True)}<p class="countdown">{when}</p>{extra}</div>')
     return f'<div class="card next"><p class="eyebrow">{e(label)}</p>{game_card(ng, info, big=True)}<p class="countdown">{when}</p>{extra}</div>'
 
 
