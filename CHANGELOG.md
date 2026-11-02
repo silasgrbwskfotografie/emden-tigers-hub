@@ -1,5 +1,19 @@
 # Änderungen
 
+## 4.1 (02.11.2026)
+- Livescore auf der Startseite: Die Herren-Karte unter „Nächste Spiele“ zeigt während des Spiels den Spielstand statt „VS“,
+  mit LIVE, Viertel oder Halbzeit, Down und den letzten Punkten; danach etwa 2 Stunden „Endstand“. Aktualisiert sich alle 5 Sekunden, nur solange die Seite sichtbar ist
+- Livescore für die Webseite: Highlight Desk meldet den Spielstand an den Hub, die Webseite liest ihn öffentlich
+  - Einstellungen > Livescore: Token für Highlight Desk erzeugen (wird nur einmal angezeigt, im Hub nur als Hash gespeichert), Adressen für die Webseite
+  - Öffentlich lesbar (nur Spielstand und Spielinfos, mit CORS, begrenzt pro Verbindung): `/public/live` und `/public/next-game`, dazu die fertige Seite `/spielstand`
+  - Meldung nur mit Token (`/live/push`), Spieleliste für Highlight Desk (`/live/games`)
+  - Beim Abpfiff trägt der Hub den Endstand ins Spiel ein (mit Eintrag im Protokoll)
+  - Torschützen sind standardmäßig nicht öffentlich, einschaltbar in den Einstellungen
+- Sponsorenseite: alle Sponsoren als Karten mit Logo, Paket, Webseite und Instagram; Logos füllen den Kasten (auch auf der Startseite)
+- Spielkarten zeigen den vollen Vereinsnamen „Emden Tigers“
+- Heimspieladresse und „Anfahrt auf der Karte“ führen zum Google-Maps-Link (im Hub unter Webseite > Texte änderbar)
+- E-Mail-Versand: Verschlüsselung passend zum Port (465 SSL, 587 STARTTLS), verständliche Meldung bei abgelehnter Anmeldung, Leerzeichen im Gmail-App-Passwort werden ignoriert
+
 ## 4.0 (31.10.2026)
 - Öffentliche Vereinswebseite unter `/`: Start (mit Training und Probetraining), Herren, Jugend, Spielplan, Sponsoren und Supporter Karte, Kontakt, Impressum, Datenschutz
   - Herren: Kader direkt auf der Seite nach Offense und Defense, genaue Position unter dem Namen, danach die Coaches

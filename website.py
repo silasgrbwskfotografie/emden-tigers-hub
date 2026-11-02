@@ -254,7 +254,7 @@ def next_game(games):
     return next((g for g in games if g["date"] >= today), None)
 
 
-def game_card(g, info, big=False):
+def game_card(g, info, big=False, live=False):
     club = info.get("club_name") or "Emden Tigers"
     o = (g.get("opponent") or {}).get("name") or "Gegner offen"
     home = g["home"]
@@ -264,7 +264,11 @@ def game_card(g, info, big=False):
     us_t = f'<div class="team"><span class="t-logo"><img src="/static/logo.png" alt="" width="444" height="276" loading="lazy"></span><b>{e(club)}</b></div>'
     them_t = (f'<div class="team"><span class="t-logo">' + (f'<img src="{e(opp_logo)}" alt="" loading="lazy">' if opp_logo else f'<i>{e(initials)}</i>')
               + f'</span><b>{e(o)}</b></div>')
-    teams = f"{us_t}<span class='vs'>vs</span>{them_t}" if home else f"{them_t}<span class='vs'>vs</span>{us_t}"
+    mid = "<span class='vs'>vs</span>"
+    if live:   # Livescore (site.js): Spielstand statt "vs", links immer die Heimmannschaft
+        mid = ("<div class='g-mid'><span class='vs'>vs</span><span class='g-score' hidden aria-live='polite' aria-atomic='true'>"
+               "<b data-s='l'>0</b><i>:</i><b data-s='r'>0</b></span></div>")
+    teams = f"{us_t}{mid}{them_t}" if home else f"{them_t}{mid}{us_t}"
     result = ""
     if g["score_us"] is not None:
         us, them = int(float(g["score_us"])), int(float(g["score_them"]))
@@ -273,6 +277,7 @@ def game_card(g, info, big=False):
         result = f'<div class="result {cls}">{left}:{right}</div>'
     return f"""<article class="game {'big' if big else ''} {'home' if home else 'away'}">
       <div class="g-date"><b>{e(fmt_date(g['date'], True))}</b>{f'<span>{e(g["time"])} Uhr</span>' if g['time'] else ''}</div>
+      {'<div class="live-chips" hidden><span class="chip live" data-l="state">Live</span><span class="chip" data-l="period" hidden></span><span class="chip dim" data-l="down" hidden></span><span class="chip stale" data-l="stale" hidden>Live Ticker pausiert</span></div>' if live else ''}
       <div class="g-teams">{teams}</div>
       <div class="g-meta">{f'<span class="tag team">{e(g["team"])}</span>' if g.get("team", "Herren") != "Herren" else ''}<span class="tag">{'Heimspiel' if home else 'Auswärts'}</span>{f'<span>{e(g["league"] or g["kind"])}</span>' if (g["league"] or g["kind"]) else ''}
         {f'<span>{e(g["location"])}</span>' if g['location'] else ''}</div>{result}
@@ -353,7 +358,7 @@ def page_start(info, games, team, sponsors, insta, layout_order=None):
     # Nächste Spiele über die volle Breite, Herren und Jugend nebeneinander; darunter das Training beider Teams
     sec["karten"] = f"""<section class="games-band"><div class="wrap">
   <div class="sec-head"><p class="eyebrow">Gameday</p><h2>Nächste Spiele</h2><a class="more" href="/spielplan">Ganzer Spielplan</a></div>
-  <div class="next-games">{next_game_card(info, games, "Herren", "Herren")}{next_game_card(info, games, YOUTH, "Jugend")}</div>
+  <div class="next-games">{next_game_card(info, games, "Herren", "Herren", live=True)}{next_game_card(info, games, YOUTH, "Jugend")}</div>
 </div></section>
 <section class="wrap train-strip"><div class="card"><p class="eyebrow">Training</p><h3>Komm vorbei</h3>
   <div class="tr-grid">
@@ -412,8 +417,9 @@ def player_card(p):
     return f'<article class="person">{img}{num}<h3>{e(name)}</h3><p>{e(POS_NAME.get(p["position"], p["position"]))}</p></article>'
 
 
-def next_game_card(info, games, team, label="Nächstes Spiel"):
-    """Schwarze Karte „Nächstes Spiel“ einer Mannschaft mit Countdown, Spieltagssponsor und Livestream."""
+def next_game_card(info, games, team, label="Nächstes Spiel", live=False):
+    """Schwarze Karte „Nächstes Spiel“ einer Mannschaft mit Countdown, Spieltagssponsor und Livestream.
+    live: Platz für den Livescore (site.js liest /public/live und blendet Spielstand, Chips und Punkte ein)."""
     ng = next_game([g for g in games if g.get("team", "Herren") == team])
     if not ng:
         return (f'<div class="card next"><p class="eyebrow">{e(label)}</p><h3>Termine folgen</h3>'
@@ -421,6 +427,12 @@ def next_game_card(info, games, team, label="Nächstes Spiel"):
     days = (date.fromisoformat(ng["date"]) - date.today()).days
     when = "<b>Heute</b> ist Gameday" if days == 0 else f"<b>{days}</b>{' Tag' if days == 1 else ' Tage'} bis zum Kickoff"
     extra = f'<p class="g-sponsor">Spieltag präsentiert von {e(ng["sponsor"])}</p>' if ng.get("sponsor") else ""
+    if live:
+        return (f'<div class="card next" data-live data-game="{ng.get("id") or ""}" data-home="{1 if ng["home"] else 0}" data-club="Tigers"'
+                f' data-opp="{e((ng.get("opponent") or {}).get("short") or (ng.get("opponent") or {}).get("name") or "Gegner")}">'
+                f'<p class="eyebrow">{e(label)}</p>{game_card(ng, info, big=True, live=True)}<p class="countdown">{when}</p>'
+                f'<ol class="live-events" hidden aria-label="Letzte Punkte"></ol>'
+                f'<a class="more live-link" href="/spielstand" hidden>Zum Livescore</a>{extra}</div>')
     return f'<div class="card next"><p class="eyebrow">{e(label)}</p>{game_card(ng, info, big=True)}<p class="countdown">{when}</p>{extra}</div>'
 
 
@@ -734,7 +746,7 @@ def sitemap(base):
 
 def robots(base):
     return ("User-agent: *\nAllow: /\nDisallow: /hub\nDisallow: /api/\nDisallow: /static/\nDisallow: /media/\nDisallow: /login\n"
-            "Disallow: /bestellen/\nDisallow: /teilen/\nDisallow: /invite/\nDisallow: /passwort-\n" + (f"Sitemap: {base}/sitemap.xml\n" if base else ""))
+            "Disallow: /bestellen/\nDisallow: /teilen/\nDisallow: /invite/\nDisallow: /passwort-\nDisallow: /public/\nDisallow: /live/\n" + (f"Sitemap: {base}/sitemap.xml\n" if base else ""))
 
 
 def render_page(slug, data, sent, site):

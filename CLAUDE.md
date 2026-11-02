@@ -24,6 +24,8 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
   Google: `structured_head` in website.py (canonical, `org_ld` SportsTeam, `game_ld` SportsEvent mit Zeitzone `berlin_offset`), `/sitemap.xml` und `/robots.txt`
   ohne Sitzung; absolute Adressen aus `SITE_URL` (sonst Host-Header über `base_url`). Neue öffentliche Seiten auch in `website.sitemap` eintragen.
   Livestream: `games.stream_url`, öffentlich nur als geprüfter https-Link (`public_games` -> `stream`).
+  Livescore auf der Startseite: `next_game_card(..., live=True)` (nur Herren) baut leere Plätze, `site.js` liest `/public/live` alle 5 Sekunden
+  (nur sichtbarer Tab, nur `textContent`, Reihenfolge nach den Logos der Karte, nur passendes Spiel per `data-game`), Hub-Adresse `HUB_URL` in site.js (leer = gleiche Adresse).
   Mannschaften: `TEAMS` (Herren, Next Generation) in server.py, website.py und pages.js gleich halten. `players.team`, `games.team`.
   Spieler der Next Generation (Minderjährige) gibt `public_team` nie aus, nur deren Coaches und Staff.
   Seiten: Start (mit Training und Probetraining), Herren (oben Infoblöcke mit Training und `next_game_card`, Kader nach Offense/Defense mit `player_card`: Foto nur mit Einwilligung, Position unter dem Namen; dann Coaches mit `coach_card`), Jugend, Spielplan, Sponsoren, Kontakt.
@@ -56,6 +58,7 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
 ## Sicherheit (nicht aufweichen)
 
 - Ohne Sitzung erreichbar: die Webseite (`/`, `/herren`, `/jugend`, `/spielplan`, `/sponsoren`, `/kontakt`, `/supporter-karte` (auch POST), `/impressum`, `/datenschutz`, alte Adressen `/team`, `/next-generation`, `/probetraining` als 301 in `website.REDIRECTS`, `/web/assets/...`, `/web/insta/...`, `/web/site/...`, `/sitemap.xml`, `/robots.txt`, `/api/public/...`, `POST /kontakt`),
+  Livescore `/public/live`, `/public/next-game`, `/spielstand`, `/live/push` und `/live/games` (nur mit Token),
   `/login`, `/setup`, `/invite`, `/passwort-vergessen`, `/passwort-neu`, `/healthz`, `/bestellen`, `/teilen`, `/manifest.webmanifest`, `/sw.js`, `style.css`, `logo.png`, `icon.png`, `icon-192.png`, `icon-512.png`.
   Alles unter `/hub`, `/static`, `/media` und `/api` (außer `/api/public`) braucht eine Sitzung.
 - Webseite: keine externen Schriften, Tracker oder Einbettungen. Einzige Ausnahme sind die Rechtstexte der IT-Recht Kanzlei auf `/impressum` und `/datenschutz`.
@@ -71,6 +74,7 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
 - `/bestellen/<token>` (Teamkleidung, `public_order` in server.py) ist bewusst ohne Login erreichbar, aber nur mit dem geheimen Token des Artikels.
   Liefert nur Artikel-Infos, Bestellfelder und die öffentliche Liste (ohne interne Felder, ohne `paid`, ohne Notizen) und nimmt geprüfte Bestellungen an
   (nur definierte Felder, Längen- und Auswahlprüfung, Bestellschluss, Rate-Limit pro IP). Das Token vergibt nur der Server (`/api/apparel/<id>/new-link`).
+- Livescore (`live_push`, `live_public` in server.py): Highlight Desk meldet mit `Authorization: Bearer <Token>` an `/live/push` (Token nur als Hash in `secrets.live_token_hash`, Erzeugen nur Admins unter `/api/live/token`). Öffentlich lesbar sind nur Spielstand und Spielinfos (`/public/live`, `/public/next-game`, mit CORS `*`, Rate-Limit pro IP). Alles aus der Meldung wird geprüft, gekürzt und von Markup befreit, Torschützen nur mit `live_show_players`. Die Meldung liegt nur im Speicher (`LIVE`). Beim Endstand schreibt der Hub `score_us`/`score_them` ins Spiel und ins Protokoll.
 - Schreibende Anfragen brauchen den Header `X-TMH: 1` (CSRF-Schutz). `api()` in app.js setzt ihn.
 - Passwörter: scrypt. Sitzungen: Token-Hash in `sessions`, Cookie HttpOnly, SameSite=Lax, Secure auf dem Server.
 - Passwort vergessen (`/auth/forgot`, `/auth/reset`): immer dieselbe Antwort (keine Auskunft, ob es ein Konto gibt), Link 60 Minuten und einmal gültig,

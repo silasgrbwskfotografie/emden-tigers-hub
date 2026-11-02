@@ -1574,6 +1574,7 @@ App.pages.settings = async (view) => {
     { key: 'sheet_interval', label: 'Tabelle einlesen alle ... Minuten', type: 'number' },
     { key: 'sheet_gids', label: 'Tabellenblätter (gid, mit Komma)', hint: 'Standard 0 = Blatt Spieler (Spieler und Coaches). Weitere Blätter mit Komma, die gid steht im Link hinter #gid=' },
     { key: 'sheet_update_kader', label: 'Änderungen automatisch in den Kader übernehmen', type: 'check' },
+    { key: 'live_show_players', label: 'Livescore: Torschützen mit Namen auf der Webseite zeigen', type: 'check', hint: 'Aus: nur die Ereignisart, zum Beispiel „Touchdown“, ohne Namen.' },
     { key: 'color_primary', label: 'Akzentfarbe der Oberfläche', type: 'color' },
     { key: 'home_location', label: 'Heimspielort' },
     { key: 'entry_fee', label: 'Eintritt Heimspiel (€)', type: 'number' },
@@ -1612,6 +1613,7 @@ App.pages.settings = async (view) => {
           <div class="btn-row" style="margin-top:10px"><button class="btn danger" id="mg_import">Alles ersetzen und importieren</button></div>
           <div class="hint" style="margin-top:6px">Ersetzt den kompletten Stand dieses Hubs, auch Konten. Vorher wird automatisch eine Sicherung angelegt. Danach meldest du dich mit den Zugangsdaten des alten Servers an.</div></div>
       </div><div id="mg_status" class="small" style="margin-top:10px"></div></div>
+    <div class="card" style="margin-top:16px" id="live_card"><h2>Livescore für die Webseite</h2><div class="muted">Lade ...</div></div>
     <div class="card" style="margin-top:16px" id="mail_card"><h2>E-Mail-Versand für Benachrichtigungen</h2><div class="muted">Lade ...</div></div>`;
   $('#mg_export').onclick = async () => {
     const pw = $('#mg_pw1').value;
@@ -1637,6 +1639,29 @@ App.pages.settings = async (view) => {
     alert(`Umzug eingespielt: Stand vom ${fmtStamp(d.created)} (Version ${d.version}), ${d.users} Konten, ${d.media} Dateien.\nBitte jetzt mit den Zugangsdaten des alten Servers anmelden.`);
     location.href = '/login';
   };
+  const liveCard = async () => {
+    const c = await api('live');
+    const base = location.origin;
+    $('#live_card').innerHTML = `<h2>Livescore für die Webseite</h2>
+      <p class="muted small">Highlight Desk meldet den Spielstand an diesen Hub. Die Webseite liest ihn öffentlich (nur Spielstand und Spielinfos, nichts Internes). Beim Abpfiff trägt der Hub den Endstand ins Spiel ein.</p>
+      <div class="grid g2"><div><b>Status</b><div class="small muted">${c.configured ? 'Token ist eingerichtet.' : 'Noch kein Token eingerichtet.'}
+        ${c.last_push ? ' Letzte Meldung: ' + esc(fmtStamp(new Date(c.last_push * 1000).toISOString())) + ' (' + esc(c.status) + ')' : ' Noch keine Meldung seit dem Start.'}</div></div>
+        <div><b>Adressen</b><div class="small muted">Highlight Desk: <code>${esc(base)}</code><br>Öffentliche Seite: <code>${esc(base)}/spielstand</code><br>Daten für die Webseite: <code>${esc(base)}/public/live</code> und <code>${esc(base)}/public/next-game</code></div></div></div>
+      <div class="btn-row" style="margin-top:12px"><button class="btn primary" id="lv_new">${c.configured ? 'Neues Token erzeugen' : 'Token erzeugen'}</button>
+        ${c.configured ? '<button class="btn danger" id="lv_del">Token löschen</button>' : ''}</div>
+      <div id="lv_tok" class="small" style="margin-top:10px"></div>
+      <div class="hint" style="margin-top:6px">Das Token wird nur einmal angezeigt. Trage es in Highlight Desk unter Technik, Abschnitt „Webseite“ ein. Ein neues Token macht das alte ungültig.</div>`;
+    $('#lv_new').onclick = async () => {
+      if (c.configured && !confirmBox('Neues Token erzeugen? Das alte Token funktioniert danach nicht mehr.')) return;
+      const r = await api('live/token', 'POST');
+      $('#lv_tok').innerHTML = `Neues Token (jetzt kopieren): <code style="user-select:all">${esc(r.token)}</code>`;
+    };
+    if ($('#lv_del')) $('#lv_del').onclick = async () => {
+      if (!confirmBox('Token löschen? Highlight Desk kann dann keinen Spielstand mehr senden.')) return;
+      await api('live/token', 'DELETE'); toast('Token gelöscht'); liveCard();
+    };
+  };
+  liveCard();
   const mailCard = async () => {
     const c = await api('notify');
     $('#mail_card').innerHTML = `<h2>E-Mail-Versand für Benachrichtigungen</h2>

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Spielstand | Emden Tigers</title>
+<link rel="icon" href="/static/icon.png">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  body { display: block; background: #0b0b0b; color: #fff; }
+  .ss { max-width: 640px; margin: 0 auto; padding: 18px 16px 40px; font-family: var(--text, 'Segoe UI', Arial, sans-serif); }
+  .ss-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .ss-head img { width: 54px; height: 36px; object-fit: contain; }
+  .ss-head b { font-family: var(--head, Impact, sans-serif); text-transform: uppercase; letter-spacing: .6px; font-size: 20px; }
+  .ss-card { background: #151515; border: 1px solid #2a2a2a; border-radius: 16px; padding: 18px; }
+  .ss-tag { display: inline-block; font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; background: #2a2a2a; color: #ccc; }
+  .ss-tag.live { background: #B3121D; color: #fff; }
+  .ss-tag.live::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #fff; margin-right: 7px; animation: ssb 1.1s ease-in-out infinite; }
+  @keyframes ssb { 50% { opacity: .25; } }
+  .ss-score { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: center; margin: 16px 0 8px; text-align: center; }
+  .ss-score .t { font-weight: 800; font-size: 18px; line-height: 1.15; }
+  .ss-score .n { white-space: nowrap; font-family: var(--head, Impact, sans-serif); font-size: clamp(38px, 12vw, 56px); letter-spacing: 1px; font-variant-numeric: tabular-nums; }
+  .ss-meta { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 8px; }
+  .ss-chip { background: #ffd34d; color: #111; font-weight: 900; padding: 5px 12px; border-radius: 10px; }
+  .ss-chip.q { background: #2a2a2a; color: #fff; }
+  .ss-warn { margin-top: 12px; padding: 8px 12px; border-radius: 10px; background: #3a2c08; color: #ffe08a; font-weight: 700; text-align: center; }
+  .ss-ev { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 6px; }
+  .ss-ev li { display: flex; gap: 10px; align-items: center; background: #1d1d1d; border-radius: 10px; padding: 8px 12px; }
+  .ss-ev li.us { border-left: 4px solid #B3121D; }
+  .ss-ev li.them { border-left: 4px solid #555; }
+  .ss-ev small { color: #aaa; min-width: 3.2em; }
+  .ss-next h2 { margin: 10px 0 4px; font-family: var(--head, Impact, sans-serif); text-transform: uppercase; font-size: 28px; line-height: 1.1; }
+  .ss-next .when { font-size: 20px; font-weight: 700; }
+  .ss-next .where { color: #bbb; margin-top: 4px; }
+  .ss-foot { margin-top: 12px; color: #888; font-size: 12px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="ss">
+  <div class="ss-head"><img src="/static/logo.png" alt=""><b>Emden Tigers</b></div>
+  <div class="ss-card" id="box"><span class="ss-tag">Lade ...</span></div>
+  <div class="ss-foot" id="foot"></div>
+</div>
+<script>
+(function () {
+  var box = document.getElementById('box'), foot = document.getElementById('foot');
+  var NEXT = null, LIVE = null, lastNext = 0;
+  function el(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
+  function fmtDate(d) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d || ''); if (!m) return d || '';
+    var dt = new Date(+m[1], +m[2] - 1, +m[3]);
+    return dt.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  }
+  function statusText(l) {
+    if (l.status === 'half') return 'Halbzeit';
+    if (l.status === 'final') return 'Endstand';
+    if (l.status === 'pre') return 'Gleich geht es los';
+    return l.period || 'Läuft';
+  }
+  function paintLive(l) {
+    var us = (l.us_name || 'Emden Tigers'), them = (l.them_name || (l.game && l.game.opponent) || 'Gegner');
+    var tag = el('span', 'ss-tag' + (l.status === 'live' ? ' live' : ''), l.status === 'final' ? 'Endstand' : l.status === 'half' ? 'Halbzeit' : 'Live');
+    var sc = el('div', 'ss-score');
+    var a = el('div', 't', us), b = el('div', 't', them);
+    var mid = el('div', 'n'); mid.appendChild(document.createTextNode(l.score_us + ' : ' + l.score_them));
+    sc.appendChild(a); sc.appendChild(mid); sc.appendChild(b);
+    var meta = el('div', 'ss-meta');
+    meta.appendChild(el('span', 'ss-chip q', statusText(l)));
+    if (l.down && l.status === 'live') meta.appendChild(el('span', 'ss-chip', l.down));
+    box.textContent = ''; box.appendChild(tag); box.appendChild(sc); box.appendChild(meta);
+    if (l.stale && l.status !== 'final') box.appendChild(el('div', 'ss-warn', 'Live Ticker pausiert. Der Stand kann veraltet sein.'));
+    if (l.events && l.events.length) {
+      var ul = el('ul', 'ss-ev');
+      l.events.slice().reverse().forEach(function (e) {
+        var li = el('li', e.us ? 'us' : 'them');
+        li.appendChild(el('small', '', e.period || ''));
+        li.appendChild(el('span', '', e.label + (e.player ? ' ' + e.player : '') + (e.us ? '' : ' (Gegner)')));
+        ul.appendChild(li);
+      });
+      box.appendChild(ul);
+    }
+  }
+  function paintNext(n) {
+    var g = n && n.game; box.textContent = '';
+    if (!g) { box.appendChild(el('span', 'ss-tag', 'Nächstes Spiel')); box.appendChild(el('div', 'ss-next')).appendChild(el('h2', '', 'Noch kein Spiel eingetragen')); return; }
+    var wrap = el('div', 'ss-next');
+    wrap.appendChild(el('span', 'ss-tag', g.home ? 'Nächstes Heimspiel' : 'Nächstes Auswärtsspiel'));
+    wrap.appendChild(el('h2', '', (g.home ? 'Emden Tigers gegen ' : 'Bei ') + (g.opponent || 'Gegner noch offen')));
+    wrap.appendChild(el('div', 'when', fmtDate(g.date) + (g.time ? ', ' + g.time + ' Uhr' : '')));
+    var where = g.location || (g.home ? n.home_location : '') || g.opponent_city;
+    if (where) wrap.appendChild(el('div', 'where', where));
+    if (g.league) wrap.appendChild(el('div', 'where', g.league));
+    box.appendChild(wrap);
+  }
+  function paint() {
+    if (LIVE && (LIVE.status === 'live' || LIVE.status === 'half' || LIVE.status === 'pre' && !LIVE.stale || LIVE.status === 'final' && LIVE.updated && LIVE.now - LIVE.updated < 3 * 3600)) paintLive(LIVE);
+    else paintNext(NEXT);
+    foot.textContent = LIVE && LIVE.updated ? 'Zuletzt aktualisiert um ' + new Date(LIVE.updated * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr' : '';
+  }
+  function getJson(u) { return fetch(u, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw 0; return r.json(); }); }
+  function tick() {
+    if (document.hidden) return;
+    getJson('/public/live').then(function (l) { LIVE = l; }).catch(function () {}).then(function () {
+      if (!NEXT || Date.now() - lastNext > 60000) return getJson('/public/next-game').then(function (n) { NEXT = n; lastNext = Date.now(); }).catch(function () {});
+    }).then(paint);
+  }
+  document.addEventListener('visibilitychange', tick);
+  tick(); setInterval(tick, 5000);
+})();
+</script>
+</body>
+</html>

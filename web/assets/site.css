@@ -129,6 +129,27 @@ p { margin: 0 0 1em; }
 .game.big .g-meta { color: #bbb; }
 .tag { background: var(--red); color: #fff; font-weight: 800; padding: 1px 8px; border-radius: 3px; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
 .game.away .tag { background: #444; }
+/* Livescore auf der Herren-Karte (site.js) */
+.card.next [hidden] { display: none !important; }
+.g-mid { display: grid; place-items: center; }
+.g-score { font: 400 clamp(44px, 13vw, 68px)/84px var(--head); color: #fff; white-space: nowrap; letter-spacing: 1px; }
+.g-score i { font-style: normal; color: var(--red); margin: 0 .08em; }
+.g-score.flash { animation: score-flash 1.2s ease-out; }
+@keyframes score-flash { 0% { color: #ff4d57; transform: scale(1.08); } 100% { color: #fff; transform: none; } }
+.live-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip { font: 800 11px/1 var(--text); letter-spacing: 2px; text-transform: uppercase; padding: 7px 10px; border-radius: 3px; background: #2a2a2a; color: #fff; }
+.chip.live { background: var(--red); }
+.chip.live::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #fff; margin-right: 7px; vertical-align: 1px; animation: live-pulse 1.4s ease-in-out infinite; }
+.chip.live.final { background: #fff; color: var(--black); }
+.chip.live.final::before { display: none; }
+.chip.stale { background: transparent; border: 1px solid #666; color: #ccc; padding: 6px 9px; }
+@keyframes live-pulse { 50% { opacity: .25; } }
+.live-events { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 6px; font-size: 15px; color: #ccc; }
+.live-events li { border-left: 3px solid #444; padding: 2px 0 2px 10px; display: flex; flex-wrap: wrap; gap: 0 8px; }
+.live-events li.us { border-left-color: var(--red); color: #fff; font-weight: 800; }
+.live-events .per { min-width: 2.2em; color: #999; font-weight: 800; }
+.live-events .who { color: #999; font-weight: 400; }
+.live-link { display: inline-block; margin-top: 14px; color: #fff; }
 .result { position: absolute; right: 16px; top: 14px; font: 400 30px/1 var(--head); }
 .result.win { color: var(--red); }
 .result.loss { color: #999; }
@@ -281,7 +302,8 @@ p { margin: 0 0 1em; }
 /* Einblenden beim Scrollen (nur mit JavaScript, ohne Bewegung bei reduzierter Bewegung) */
 .js .reveal { opacity: 0; transform: translateY(26px); transition: opacity .7s ease, transform .7s ease; }
 .js .reveal.in { opacity: 1; transform: none; }
-@media (prefers-reduced-motion: reduce) { .js .reveal { opacity: 1; transform: none; transition: none; } .btn:hover, .logo-tile:hover { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .js .reveal { opacity: 1; transform: none; transition: none; } .btn:hover, .logo-tile:hover { transform: none; }
+  .g-score.flash, .chip.live::before { animation: none; } }
 
 /* Größere Bildschirme */
 @media (min-width: 700px) {

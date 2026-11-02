@@ -48,7 +48,7 @@ import urllib.error
 
 import website   # öffentliche Webseite (website.py, gleiche Ordnerebene)
 
-VERSION = "4.0"
+VERSION = "4.1"
 APP_NAME = "Emden Tigers Hub"
 ENV = os.environ.get
 HOST = ENV("TMH_HOST", "127.0.0.1")
@@ -358,6 +358,7 @@ DEFAULT_SETTINGS = {
     "sheet_interval": "5",
     "sheet_gids": "0",
     "sheet_update_kader": "1",
+    "live_show_players": "0",
     "sheet_last_sync": "",
     "sheet_last_error": "",
     "media_tasks": "Feldrand / Live-Storys\nFotos\nMedienzelt / Livestream\nVideo / Clips",
@@ -753,6 +754,142 @@ def order_rate_ok(ip):
         return ok
 
 
+# ---------------------------------------------------------------- Livescore (Highlight Desk -> Hub -> Webseite)
+LIVE = {"data": None, "at": 0.0}
+LIVE_LOCK = threading.Lock()
+LIVE_HITS = {}                 # (Art, IP) -> Zeitpunkte
+LIVE_PUSH_MAX = 16 * 1024      # Größe einer Meldung von Highlight Desk
+LIVE_STALE = 90                # Sekunden ohne Meldung: "Live Ticker pausiert"
+LIVE_END = 6 * 3600            # nach 6 Stunden ohne Meldung gilt das Spiel als vorbei
+LIVE_STATUS = ("pre", "live", "half", "final")
+
+
+def live_rate_ok(kind, ip, limit):
+    with FAILED_LOCK:
+        now = time.time()
+        key = (kind, ip)
+        hits = [t for t in LIVE_HITS.get(key, []) if now - t < 60]
+        ok = len(hits) < limit
+        if ok:
+            hits.append(now)
+        LIVE_HITS[key] = hits
+        return ok
+
+
+def live_token_ok(header):
+    """Prüft "Authorization: Bearer <Token>" gegen den gespeicherten Hash."""
+    m = re.fullmatch(r"Bearer ([A-Za-z0-9_-]{20,80})", (header or "").strip())
+    if not m:
+        return False
+    with db() as conn:
+        stored = secret_get(conn, "live_token_hash")
+    return bool(stored) and hmac.compare_digest(token_hash(m.group(1)), stored)
+
+
+def _live_str(v, n):
+    return re.sub(r"[\x00-\x1f<>]", "", str(v if v is not None else "")).strip()[:n]
+
+
+def _live_int(v, lo, hi, default=0):
+    try:
+        return max(lo, min(hi, int(v)))
+    except (TypeError, ValueError):
+        return default
+
+
+def live_clean(d, show_players):
+    """Macht aus der Meldung von Highlight Desk die öffentlichen Felder (alles geprüft, gekürzt, ohne Markup)."""
+    if not isinstance(d, dict):
+        raise ValueError("Ungültige Meldung")
+    side = "a" if d.get("us_side") == "a" else "h"
+    sc = d.get("score") if isinstance(d.get("score"), dict) else {}
+    h, a = _live_int(sc.get("h"), 0, 999), _live_int(sc.get("a"), 0, 999)
+    us, them = (h, a) if side == "h" else (a, h)
+    status = d.get("status") if d.get("status") in LIVE_STATUS else "pre"
+    events = []
+    for e in (d.get("events") if isinstance(d.get("events"), list) else [])[:12]:
+        if not isinstance(e, dict):
+            continue
+        row = {"label": _live_str(e.get("label"), 24), "us": e.get("side") == side, "period": _live_str(e.get("period"), 12)}
+        if show_players:
+            row["player"] = _live_str(e.get("player"), 40)
+        if row["label"]:
+            events.append(row)
+    gid = d.get("game_id")
+    return {"game_id": _live_int(gid, 1, 10 ** 9, 0) or None, "status": status, "period": _live_str(d.get("period"), 12),
+            "down": _live_str(d.get("down"), 16), "score_us": us, "score_them": them, "events": events,
+            "us_name": _live_str(d.get("us_name"), 40), "them_name": _live_str(d.get("them_name"), 40)}
+
+
+def live_game(conn, gid):
+    if not gid:
+        return None
+    g = conn.execute("SELECT g.*, o.name AS opp_name, o.short AS opp_short, o.city AS opp_city FROM games g "
+                     "LEFT JOIN opponents o ON o.id = g.opponent_id WHERE g.id=?", (gid,)).fetchone()
+    return g
+
+
+def game_public(g):
+    return {"id": g["id"], "date": g["date"] or "", "time": g["time"] or "", "home": bool(g["home"]), "location": g["location"] or "",
+            "kind": g["kind"] or "", "league": g["league"] or "", "opponent": g["opp_name"] or "", "opponent_short": g["opp_short"] or "",
+            "opponent_city": g["opp_city"] or ""}
+
+
+def live_push(data):
+    """Speichert die neue Meldung. Beim Abpfiff wird der Endstand ins Spiel eingetragen."""
+    with db() as conn:
+        clean = live_clean(data, get_setting(conn, "live_show_players") == "1")
+        if clean["game_id"] and not live_game(conn, clean["game_id"]):
+            clean["game_id"] = None
+        if clean["status"] == "final" and clean["game_id"]:
+            old = conn.execute("SELECT score_us, score_them FROM games WHERE id=?", (clean["game_id"],)).fetchone()
+            new = (str(clean["score_us"]), str(clean["score_them"]))
+            if old and (old["score_us"], old["score_them"]) != new:
+                conn.execute("UPDATE games SET score_us=?, score_them=? WHERE id=?", (new[0], new[1], clean["game_id"]))
+                audit(conn, "Highlight Desk", "Endstand eingetragen", "games", clean["game_id"], f"{new[0]}:{new[1]}")
+    with LIVE_LOCK:
+        LIVE["data"], LIVE["at"] = clean, time.time()
+    return clean
+
+
+def live_public():
+    """Öffentliche Sicht: nur Spielstand und Spielinfos, nichts Internes."""
+    with LIVE_LOCK:
+        d, at = LIVE["data"], LIVE["at"]
+    age = time.time() - at if d else None
+    out = {"live": False, "stale": False, "updated": int(at) if d else 0, "now": int(time.time())}
+    if not d or age > LIVE_END:
+        return out
+    out.update({"live": d["status"] in ("live", "half"), "stale": age > LIVE_STALE, "status": d["status"], "period": d["period"],
+                "down": d["down"], "score_us": d["score_us"], "score_them": d["score_them"], "events": d["events"],
+                "us_name": d["us_name"], "them_name": d["them_name"]})
+    if d["game_id"]:
+        with db() as conn:
+            g = live_game(conn, d["game_id"])
+        if g:
+            out["game"] = game_public(g)
+    return out
+
+
+def next_game_public():
+    today = datetime.now().strftime("%Y-%m-%d")
+    with db() as conn:
+        g = conn.execute("SELECT g.*, o.name AS opp_name, o.short AS opp_short, o.city AS opp_city FROM games g "
+                         "LEFT JOIN opponents o ON o.id = g.opponent_id WHERE g.date >= ? ORDER BY g.date, g.time LIMIT 1", (today,)).fetchone()
+        club = get_setting(conn, "club_name")
+        home = get_setting(conn, "home_location")
+    return {"club": club, "home_location": home, "game": game_public(g) if g else None}
+
+
+def live_games_for_desk():
+    """Spiele für die Auswahl in Highlight Desk: die letzten 14 Tage und alle kommenden."""
+    since = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
+    with db() as conn:
+        rows = conn.execute("SELECT g.*, o.name AS opp_name, o.short AS opp_short, o.city AS opp_city FROM games g "
+                            "LEFT JOIN opponents o ON o.id = g.opponent_id WHERE g.date >= ? ORDER BY g.date, g.time LIMIT 40", (since,)).fetchall()
+        return {"club": get_setting(conn, "club_name"), "games": [game_public(r) for r in rows]}
+
+
 def apparel_fields(a):
     try:
         fields = json.loads(a["fields"] or "[]")
@@ -865,7 +1002,7 @@ def public_games():
         o = opp.get(g["opponent_id"])
         played = g["score_us"] not in (None, "") and g["score_them"] not in (None, "")
         out.append({
-            "team": g["team"] if g["team"] in TEAMS else "Herren", "season": g["season"] or "", "date": g["date"], "time": g["time"] or "", "home": bool(g["home"]), "kind": g["kind"] or "",
+            "id": g["id"], "team": g["team"] if g["team"] in TEAMS else "Herren", "season": g["season"] or "", "date": g["date"], "time": g["time"] or "", "home": bool(g["home"]), "kind": g["kind"] or "",
             "league": g["league"] or "", "location": g["location"] or (home_loc if g["home"] else ""),
             "opponent": {"name": o["name"] or "", "short": o["short"] or "", "city": o["city"] or "", "logo": public_image(o["logo"], key)} if o else None,
             "score_us": g["score_us"] if played else None, "score_them": g["score_them"] if played else None,
@@ -2255,6 +2392,17 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_json_cors(self, obj, status=200):
+        """Öffentliche, rein lesende Daten dürfen von der Vereinswebseite abgerufen werden."""
+        body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(body)
+
     def send_file(self, path: Path, download_name=None, cache=False):
         if not path.is_file():
             return self.send_error(404)
@@ -2474,6 +2622,30 @@ class Handler(BaseHTTPRequestHandler):
             return self.wfile.write(body)
         if head == "supporter-karte" and method == "POST" and len(p) == 1:
             return self.public_card_order()
+        # Livescore: Highlight Desk meldet mit Token, die Webseite liest öffentlich (nur Spielstand und Spielinfos)
+        if head == "public" and method == "GET" and len(p) == 2 and p[1] in ("live", "next-game"):
+            if not live_rate_ok("pub", self.client_ip(), 120):
+                return self.send_json({"error": "Zu viele Anfragen"}, 429)
+            return self.send_json_cors(live_public() if p[1] == "live" else next_game_public())
+        if head == "spielstand" and method == "GET" and len(p) == 1:
+            return self.send_file(STATIC / "spielstand.html")
+        if head == "live" and len(p) == 2 and p[1] in ("push", "games"):
+            ip = self.client_ip()
+            if not live_rate_ok("tok", ip, 300):
+                return self.send_json({"error": "Zu viele Anfragen"}, 429)
+            if not live_token_ok(self.headers.get("Authorization")):
+                time.sleep(0.4)
+                return self.send_json({"error": "Token ungültig"}, 401)
+            if p[1] == "games" and method == "GET":
+                return self.send_json(live_games_for_desk())
+            if p[1] == "push" and method == "POST":
+                raw = self.read_body(LIVE_PUSH_MAX)
+                try:
+                    clean = live_push(json.loads(raw.decode("utf-8")) if raw else {})
+                except (ValueError, UnicodeDecodeError):
+                    return self.send_json({"error": "Ungültige Meldung"}, 400)
+                return self.send_json({"ok": True, "game_id": clean["game_id"], "status": clean["status"]})
+            return self.send_error(404)
         # Öffentliche Webseite: Seiten, Dateien unter /web/assets, sonst 404-Seite (Hub-Pfade brauchen weiter Login)
         if method == "GET" and len(p) == 1 and head in website.REDIRECTS:   # alte Adressen der ersten Fassung
             q = urlparse(self.path).query
@@ -2918,6 +3090,25 @@ class Handler(BaseHTTPRequestHandler):
                 return self.api_website(method, p[1:], user, can)
             if name == "social":
                 return self.api_social(method, p[1:], user, can)
+            if name == "live":
+                if not admin:
+                    return self.deny("Nur für Admins.")
+                with db() as conn:
+                    if method == "GET":
+                        with LIVE_LOCK:
+                            at, d = LIVE["at"], LIVE["data"]
+                        return self.send_json({"configured": bool(secret_get(conn, "live_token_hash")), "last_push": int(at) if d else 0,
+                                               "status": d["status"] if d else "", "show_players": get_setting(conn, "live_show_players") == "1"})
+                    if method == "POST" and p[1:] == ["token"]:
+                        tok = secrets.token_urlsafe(32)
+                        secret_set(conn, "live_token_hash", token_hash(tok))
+                        audit(conn, user, "neues Token", "live", None, "Livescore Anbindung")
+                        return self.send_json({"token": tok})
+                    if method == "DELETE" and p[1:] == ["token"]:
+                        secret_set(conn, "live_token_hash", "")
+                        audit(conn, user, "Token gelöscht", "live", None, "Livescore Anbindung")
+                        return self.send_json({"ok": True})
+                return self.send_error(404)
             if name == "notify":
                 return self.api_notify(method, p[1:], user)
             if name == "migrate":
