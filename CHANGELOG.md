@@ -9,6 +9,7 @@
   - Meldung nur mit Token (`/live/push`), Spieleliste für Highlight Desk (`/live/games`)
   - Beim Abpfiff trägt der Hub den Endstand ins Spiel ein (mit Eintrag im Protokoll)
   - Torschützen sind standardmäßig nicht öffentlich, einschaltbar in den Einstellungen
+  - Spielplan: Knopf „Zurücksetzen“ pro Spiel (Verein bearbeiten) löscht Ergebnis und Viertel und beendet den Livescore, z. B. nach einem Test mit Highlight Desk
 - Sponsorenseite: alle Sponsoren als Karten mit Logo, Paket, Webseite und Instagram; Logos füllen den Kasten (auch auf der Startseite)
 - Spielkarten zeigen den vollen Vereinsnamen „Emden Tigers“
 - Heimspieladresse und „Anfahrt auf der Karte“ führen zum Google-Maps-Link (im Hub unter Webseite > Texte änderbar)

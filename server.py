@@ -3090,6 +3090,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self.api_website(method, p[1:], user, can)
             if name == "social":
                 return self.api_social(method, p[1:], user, can)
+            if name == "live" and method == "POST" and len(p) == 3 and p[1] == "reset" and p[2].isdigit():
+                # Spiel zurücksetzen (z. B. nach einem Test mit Highlight Desk): Ergebnis leeren, Livescore beenden
+                if not can("verein", 2):
+                    return self.deny()
+                gid = int(p[2])
+                with db() as conn:
+                    g = conn.execute("SELECT score_us, score_them FROM games WHERE id=?", (gid,)).fetchone()
+                    if not g:
+                        return self.send_json({"error": "Spiel nicht gefunden"}, 404)
+                    conn.execute("UPDATE games SET score_us=NULL, score_them=NULL, quarters=NULL WHERE id=?", (gid,))
+                    audit(conn, user, "Spiel zurückgesetzt", "games", gid, f"vorher {g['score_us'] or ''}:{g['score_them'] or ''}".rstrip(":"))
+                with LIVE_LOCK:
+                    cleared = bool(LIVE["data"]) and LIVE["data"].get("game_id") in (gid, None)
+                    if cleared:
+                        LIVE["data"], LIVE["at"] = None, 0.0
+                return self.send_json({"ok": True, "live_cleared": cleared})
             if name == "live":
                 if not admin:
                     return self.deny("Nur für Admins.")

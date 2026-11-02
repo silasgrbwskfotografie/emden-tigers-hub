@@ -602,7 +602,7 @@ App.pages.games = async (view) => {
           <td>${sp ? esc(sp.name) : '<span class="muted">keiner</span>'}</td>
           <td><button class="pp btn sm" onclick="assignGame(${g.id})">${asg}/${tasks.length}</button></td>
           <td>${posts.length ? posts.map(p => statusBadge(p.type)).join(' ') : '<span class="muted small">keine</span>'}</td>
-          <td class="actions"><button class="btn sm keep" onclick="copyGameInfo(${g.id})">Infos kopieren</button> <button class="pp btn sm" onclick="planPost({type:'Gameday',game_id:${g.id}})">Gameday</button> <button class="pp btn sm" onclick="planPost({type:'Ergebnis',game_id:${g.id}})">Endstand</button> <button class="vw btn sm ghost" onclick="editGame(${g.id})">Bearbeiten</button></td>
+          <td class="actions"><button class="btn sm keep" onclick="copyGameInfo(${g.id})">Infos kopieren</button> <button class="pp btn sm" onclick="planPost({type:'Gameday',game_id:${g.id}})">Gameday</button> <button class="pp btn sm" onclick="planPost({type:'Ergebnis',game_id:${g.id}})">Endstand</button> <button class="vw btn sm ghost" onclick="editGame(${g.id})">Bearbeiten</button> <button class="vw btn sm ghost" onclick="resetGame(${g.id})" title="Ergebnis leeren und Livescore beenden, z. B. nach einem Test mit Highlight Desk">Zurücksetzen</button></td>
         </tr>`; }).join('') || '<tr><td colspan="9" class="empty">Noch keine Spiele in dieser Saison.</td></tr>'}
       </tbody></table></div>`;
     $$('[data-s]').forEach(b => b.onclick = () => { season = b.dataset.s; draw(); });
@@ -610,6 +610,16 @@ App.pages.games = async (view) => {
   };
   draw();
 };
+
+async function resetGame(id) {
+  const g = byId(App.cache.games, id) || {};
+  const o = byId(App.cache.opponents, g.opponent_id) || {};
+  if (!confirmBox(`Spiel gegen ${o.name || 'TBA'} am ${fmtDate(g.date)} zurücksetzen?\nDas Ergebnis wird gelöscht und ein laufender Livescore beendet. Die Webseite zeigt danach wieder „vs“.`)) return;
+  const r = await api(`live/reset/${id}`, 'POST');
+  invalidate('games');
+  toast(r.live_cleared ? 'Spiel und Livescore zurückgesetzt' : 'Spiel zurückgesetzt');
+  route();
+}
 
 /* ====================================================================== */
 /* Kader */
