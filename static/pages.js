@@ -1387,7 +1387,8 @@ const SITE_TEXT_GROUPS = [
     { key: 'site_youth_training_place', label: 'Trainingsort mit Adresse' },
   ]],
   ['Spielplan', '/spielplan', [
-    { key: 'site_home_address', label: 'Adresse Heimspielort', hint: 'Für den Link „Anfahrt auf der Karte“.' },
+    { key: 'site_home_address', label: 'Adresse Heimspielort', hint: 'Erscheint auf Spielplan und Kontakt, verlinkt auf die Karte.' },
+    { key: 'site_home_maps_url', label: 'Karten-Link Heimspielort', placeholder: 'https://maps.app.goo.gl/...', hint: 'Link für Adresse und „Anfahrt auf der Karte“, z. B. aus Google Maps „Teilen“. Leer = Suche auf OpenStreetMap.' },
     { key: 'site_gameday_text', label: 'Am Spieltag: Infos für Zuschauer (Parken, Essen, Kinder)', type: 'textarea', rows: 3, full: true },
   ]],
   ['Sponsoren', '/sponsoren', [

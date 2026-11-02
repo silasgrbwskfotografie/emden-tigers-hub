@@ -376,6 +376,7 @@ DEFAULT_SETTINGS = {
                        "Fußball- oder Turnschuhe und etwas zu trinken. Am besten schreibst du uns vorher kurz über das Formular, "
                        "dann wissen wir Bescheid und nehmen dich am Platz in Empfang.",
     "site_home_address": "Folkmar-Allena-Straße 13, 26725 Emden-Wolthusen",
+    "site_home_maps_url": "https://maps.app.goo.gl/r6ppK8DMos2bzSGK9",   # Link für Adresse und Anfahrt zum Heimspielort
     "site_gameday_text": "An Heimspieltagen freuen wir uns über jede Unterstützung an der Seitenlinie. Bring Familie und Freunde mit, "
                          "feuer die Tigers an und erlebe American Football aus nächster Nähe. Aktuelle Infos zum Spieltag findest du vorher auf Instagram.",
     "site_card_short": "Unterstütze die Tigers eine ganze Saison lang und zeig, dass du hinter dem Team stehst.",
@@ -404,7 +405,7 @@ DEFAULT_SETTINGS = {
     "web_images": "{}",
     "web_layout": "",
 }
-SITE_TEXTS_VERSION = "3"   # erhöhen, wenn neue Standardtexte in leere Felder bestehender Server übernommen werden sollen
+SITE_TEXTS_VERSION = "4"   # erhöhen, wenn neue Standardtexte in leere Felder bestehender Server übernommen werden sollen
 
 
 DB_LOCK = threading.RLock()   # exklusiv beim Einspielen eines Backups
@@ -1498,18 +1499,31 @@ def send_mail(cfg, to, subject, body, footer=True):
                             "\n\nWelche Nachrichten du bekommst, stellst du im Hub unter „Mein Profil“ ein." if footer else ""))
     try:
         port = int(cfg["smtp_port"] or (465 if cfg["smtp_security"] == "ssl" else 587))
+        security = cfg["smtp_security"]
+        if security != "none":   # Standardports haben feste Verschlüsselung: 465 = SSL, 587 = STARTTLS (häufige Verwechslung)
+            security = {465: "ssl", 587: "starttls"}.get(port, security)
         ctx = ssl.create_default_context()
-        if cfg["smtp_security"] == "ssl":
+        if security == "ssl":
             s = smtplib.SMTP_SSL(cfg["smtp_host"], port, timeout=30, context=ctx)
         else:
             s = smtplib.SMTP(cfg["smtp_host"], port, timeout=30)
-            if cfg["smtp_security"] != "none":
+            if security != "none":
                 s.starttls(context=ctx)
         with s:
             if cfg["smtp_user"]:
-                s.login(cfg["smtp_user"], cfg["smtp_password"])
+                # Nur der erste Anmeldeweg, sonst verdeckt Gmail die Ablehnung mit "Connection unexpectedly closed"
+                s.ehlo_or_helo_if_needed()
+                s.user, s.password = cfg["smtp_user"], cfg["smtp_password"] or ""
+                mech = next((m for m in ("PLAIN", "LOGIN") if m in s.esmtp_features.get("auth", "").upper().split()), None)
+                if mech:
+                    s.auth(mech, s.auth_plain if mech == "PLAIN" else s.auth_login)
+                else:
+                    s.login(cfg["smtp_user"], cfg["smtp_password"])
             s.send_message(msg)
         return None
+    except smtplib.SMTPAuthenticationError as e:
+        return (f"Anmeldung abgelehnt ({e.smtp_code}). Benutzername oder Passwort stimmen nicht. "
+                "Bei Gmail die komplette Adresse und ein App-Passwort verwenden (Bestätigung in zwei Schritten muss an sein).")
     except Exception as e:  # noqa
         return f"{type(e).__name__}: {e}"
 

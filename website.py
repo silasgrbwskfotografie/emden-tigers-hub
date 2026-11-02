@@ -295,6 +295,15 @@ def coaches_of(team, which):
                   key=lambda p: COACH_ROLES.index(p["role"]) if p["role"] in COACH_ROLES else 99)
 
 
+def home_maps_url(info):
+    """Karten-Link zum Heimspielort: eigener Link aus dem Hub (nur https), sonst Suche auf OpenStreetMap."""
+    url = (info.get("site_home_maps_url") or "").strip()
+    if url.startswith("https://") and not any(c in url for c in ' "<>'):
+        return url
+    q = info.get("site_home_address") or info.get("home_location") or ""
+    return f"https://www.openstreetmap.org/search?query={q}" if q else ""
+
+
 def herren_training_cards(info):
     addr = info.get("site_training_address")
     return f"""<div class="card"><p class="eyebrow">Training Herren</p><h3>Tackle Football</h3><p class="big-lines">{text_or_ph(info.get("site_training_times"), "Trainingszeiten")}</p></div>
@@ -483,13 +492,14 @@ def page_schedule(info, games):
         return (f'<section class="wrap" id="{TEAM_SLUG[t]}">{section_head("Spielplan", "Herren" if t == "Herren" else "Jugend: Next Generation")}'
                 + ("".join(season_block(gs, s) for s in seasons) or empty) + '</section>')
     loc = info.get("home_location") or ""
+    maps = home_maps_url(info)
     body = f"""<section class="page-hero">{picture("spiel", "100vw", "hero-img", eager=True)}<div class="hero-text"><p class="eyebrow light">Saison {e(info.get("season"))}</p><h1>Spielplan</h1></div></section>
 {"".join(team_block(t) for t in TEAMS)}
 <section class="wrap split-info">
   <div class="card"><p class="eyebrow">Heimspiele</p><h3>{e(loc) or placeholder("Heimspielort")}</h3>
     <p>{f"Eintritt: {e(info.get('entry_fee'))} €" if info.get("entry_fee") else placeholder("Eintritt")}</p>
-    <p>{text_or_ph(info.get("site_home_address"), "Adresse des Heimspielorts")}</p>
-    {f'<a class="more" href="https://www.openstreetmap.org/search?query={e(info.get("site_home_address") or loc)}" target="_blank" rel="noopener">Anfahrt auf der Karte</a>' if (info.get("site_home_address") or loc) else ''}</div>
+    <p>{f'<a href="{e(maps)}" target="_blank" rel="noopener">{e(info["site_home_address"])}</a>' if info.get("site_home_address") and maps else text_or_ph(info.get("site_home_address"), "Adresse des Heimspielorts")}</p>
+    {f'<a class="more" href="{e(maps)}" target="_blank" rel="noopener">Anfahrt auf der Karte</a>' if maps else ''}</div>
   <div class="card"><p class="eyebrow">Gut zu wissen</p><h3>Am Spieltag</h3><p>{text_or_ph(info.get("site_gameday_text"), "Infos zum Spieltag (Parken, Essen, Kinder)")}</p></div>
 </section>
 {f'''<section class="wrap guide" id="anfahrt">{section_head("Heimspiel Guide", "So findest du uns")}
@@ -509,7 +519,8 @@ def page_contact(info, sent=None, preselect=""):
     topics = "".join(f'<label class="topic"><input type="radio" name="anliegen" value="{e(v)}" {"checked" if v == pick else ""}>'
                      f'<span><b>{e(label)}</b><small>{e(hints.get(v, ""))}</small></span></label>' for v, _, label in CONTACT_TOPICS)
     home_addr = info.get("site_home_address")
-    body = f"""<section class="page-hero">{picture("training", "100vw", "hero-img", eager=True)}<div class="hero-text"><p class="eyebrow light">Kontakt</p><h1>Schreib uns</h1>
+    maps = home_maps_url(info)
+    body =f"""<section class="page-hero">{picture("training", "100vw", "hero-img", eager=True)}<div class="hero-text"><p class="eyebrow light">Kontakt</p><h1>Schreib uns</h1>
   <p class="lead">Probetraining, Sponsoring oder eine Frage zum Verein: Wir melden uns so schnell wie möglich bei dir.</p></div></section>
 <section class="wrap contact-wrap" id="formular">
   <div class="contact-main">{section_head("Kontaktformular", "Deine Nachricht")}
@@ -533,8 +544,9 @@ def page_contact(info, sent=None, preselect=""):
       <p><b>Herren</b><br>{text_or_ph(info.get("site_training_times"), "Trainingszeiten Herren")}<br><span class="small">{text_or_ph(info.get("site_training_place"), "Trainingsort")}</span></p>
       <p><b>Jugend</b><br>{text_or_ph(info.get("site_youth_training_times"), "Trainingszeiten Jugend")}</p></div>
     <div class="side-box"><p class="eyebrow">Heimspiele</p>
-      <p><b>{e(info.get("home_location") or "")}</b>{"<br>" + e(home_addr) if home_addr else ""}</p>
-      <a class="more" href="/spielplan#anfahrt">So findest du uns</a></div>
+      <p><b>{e(info.get("home_location") or "")}</b>{f'<br><a href="{e(maps)}" target="_blank" rel="noopener">{e(home_addr)}</a>' if home_addr and maps else ("<br>" + e(home_addr) if home_addr else "")}</p>
+      {f'<a class="more" href="{e(maps)}" target="_blank" rel="noopener">Anfahrt auf der Karte</a><br>' if maps else ''}
+      <a class="more" href="/spielplan#anfahrt">Heimspiel Guide</a></div>
   </aside>
 </section>"""
     return layout("kontakt", "Kontakt", "Kontakt zu den Emden Tigers: Probetraining für Herren und Jugend, Sponsoring und Fragen zum Verein.", body, info)
