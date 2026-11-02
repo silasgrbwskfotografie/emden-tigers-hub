@@ -255,7 +255,7 @@ def next_game(games):
 
 
 def game_card(g, info, big=False):
-    club = info.get("club_short") or "Tigers"
+    club = info.get("club_name") or "Emden Tigers"
     o = (g.get("opponent") or {}).get("name") or "Gegner offen"
     home = g["home"]
     opp_logo = (g.get("opponent") or {}).get("logo")
