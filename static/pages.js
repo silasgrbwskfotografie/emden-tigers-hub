@@ -598,11 +598,12 @@ App.pages.games = async (view) => {
           <td>${o.logo ? `<img class="thumb logo" src="${esc(o.logo)}">` : ''}</td>
           <td><b>${Number(g.home) ? 'vs' : '@'} ${esc(o.name || 'TBA')}</b><div class="muted small">${esc(g.kind || '')}${g.league ? ' | ' + esc(g.league) : ''}</div>${teamBadge(g)}</td>
           <td>${Number(g.home) ? '<span class="badge red">Heim</span>' : '<span class="badge">Auswärts</span>'}<div class="muted small">${esc(g.location || (Number(g.home) ? App.settings.home_location : ''))}</div></td>
-          <td>${g.score_us !== null && g.score_us !== '' ? `<b>${g.score_us}:${g.score_them}</b> <span class="badge ${res === 'SIEG' ? 'ok' : res === 'NIEDERLAGE' ? '' : 'warn'}">${res.charAt(0) + res.slice(1).toLowerCase()}</span>` : '<span class="muted">offen</span>'}</td>
+          <td>${g.score_us !== null && g.score_us !== '' ? `<b>${g.score_us}:${g.score_them}</b> <span class="badge ${res === 'SIEG' ? 'ok' : res === 'NIEDERLAGE' ? '' : 'warn'}">${res.charAt(0) + res.slice(1).toLowerCase()}</span>` : '<span class="muted">offen</span>'}
+            <div><button class="vw btn sm ghost" style="margin-top:4px" onclick="resetGame(${g.id})" title="Ergebnis leeren und Livescore beenden, z. B. nach einem Test mit Highlight Desk">Zurücksetzen</button></div></td>
           <td>${sp ? esc(sp.name) : '<span class="muted">keiner</span>'}</td>
           <td><button class="pp btn sm" onclick="assignGame(${g.id})">${asg}/${tasks.length}</button></td>
           <td>${posts.length ? posts.map(p => statusBadge(p.type)).join(' ') : '<span class="muted small">keine</span>'}</td>
-          <td class="actions"><button class="btn sm keep" onclick="copyGameInfo(${g.id})">Infos kopieren</button> <button class="pp btn sm" onclick="planPost({type:'Gameday',game_id:${g.id}})">Gameday</button> <button class="pp btn sm" onclick="planPost({type:'Ergebnis',game_id:${g.id}})">Endstand</button> <button class="vw btn sm ghost" onclick="editGame(${g.id})">Bearbeiten</button> <button class="vw btn sm ghost" onclick="resetGame(${g.id})" title="Ergebnis leeren und Livescore beenden, z. B. nach einem Test mit Highlight Desk">Zurücksetzen</button></td>
+          <td class="actions"><button class="btn sm keep" onclick="copyGameInfo(${g.id})">Infos kopieren</button> <button class="pp btn sm" onclick="planPost({type:'Gameday',game_id:${g.id}})">Gameday</button> <button class="pp btn sm" onclick="planPost({type:'Ergebnis',game_id:${g.id}})">Endstand</button> <button class="vw btn sm ghost" onclick="editGame(${g.id})">Bearbeiten</button></td>
         </tr>`; }).join('') || '<tr><td colspan="9" class="empty">Noch keine Spiele in dieser Saison.</td></tr>'}
       </tbody></table></div>`;
     $$('[data-s]').forEach(b => b.onclick = () => { season = b.dataset.s; draw(); });
