@@ -33,7 +33,7 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
 
 ## Sicherheit (nicht aufweichen)
 
-- Alles außer `/login`, `/setup`, `/invite`, `/passwort-vergessen`, `/passwort-neu`, `/healthz`, `/bestellen`, `/teilen`, `/manifest.webmanifest`, `/sw.js`, `style.css`, `logo.png`, `icon.png`, `icon-192.png`, `icon-512.png` braucht eine Sitzung.
+- Alles außer `/login`, `/setup`, `/invite`, `/passwort-vergessen`, `/passwort-neu`, `/healthz`, `/bestellen`, `/teilen`, `/public/live`, `/public/next-game`, `/spielstand`, `/live/push`, `/live/games`, `/manifest.webmanifest`, `/sw.js`, `style.css`, `logo.png`, `icon.png`, `icon-192.png`, `icon-512.png` braucht eine Sitzung.
 - `sw.js` speichert bewusst nichts zwischen (keine Vereinsdaten offline auf dem Handy).
 - Änderungsprotokoll `audit_log` (nicht in `TABLES`, nur `/api/admin/log`, nicht im Backup-Download). `api_table` schreibt bei jedem Anlegen, Ändern, Löschen mit; neue Sonderaktionen mit `audit(...)` ergänzen.
 - Serverumzug (`/api/migrate`, nur Admins): Komplett-Export inkl. Konten, `secrets` und Protokoll, ohne Sitzungen, verschlüsselt mit Passwort
@@ -45,6 +45,7 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
 - `/bestellen/<token>` (Teamkleidung, `public_order` in server.py) ist bewusst ohne Login erreichbar, aber nur mit dem geheimen Token des Artikels.
   Liefert nur Artikel-Infos, Bestellfelder und die öffentliche Liste (ohne interne Felder, ohne `paid`, ohne Notizen) und nimmt geprüfte Bestellungen an
   (nur definierte Felder, Längen- und Auswahlprüfung, Bestellschluss, Rate-Limit pro IP). Das Token vergibt nur der Server (`/api/apparel/<id>/new-link`).
+- Livescore (`live_push`, `live_public` in server.py): Highlight Desk meldet mit `Authorization: Bearer <Token>` an `/live/push` (Token nur als Hash in `secrets.live_token_hash`, Erzeugen nur Admins unter `/api/live/token`). Öffentlich lesbar sind nur Spielstand und Spielinfos (`/public/live`, `/public/next-game`, mit CORS `*`, Rate-Limit pro IP). Alles aus der Meldung wird geprüft, gekürzt und von Markup befreit, Torschützen nur mit `live_show_players`. Die Meldung liegt nur im Speicher (`LIVE`). Beim Endstand schreibt der Hub `score_us`/`score_them` ins Spiel und ins Protokoll.
 - Schreibende Anfragen brauchen den Header `X-TMH: 1` (CSRF-Schutz). `api()` in app.js setzt ihn.
 - Passwörter: scrypt. Sitzungen: Token-Hash in `sessions`, Cookie HttpOnly, SameSite=Lax, Secure auf dem Server.
 - Passwort vergessen (`/auth/forgot`, `/auth/reset`): immer dieselbe Antwort (keine Auskunft, ob es ein Konto gibt), Link 60 Minuten und einmal gültig,
