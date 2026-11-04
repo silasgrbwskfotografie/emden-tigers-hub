@@ -87,6 +87,11 @@ p { margin: 0 0 1em; }
 .games-band { background: #fff; padding: 48px 0; }
 .games-band .wrap { padding: 0; }
 .next-games { display: grid; gap: 16px; }
+/* Startseite: links die Spiele untereinander, rechts das Training auf gleicher Höhe */
+.gameday { display: grid; gap: 16px; }
+.train-card { box-shadow: 0 6px 18px rgba(0,0,0,.06); display: flex; flex-direction: column; }
+.train-card .tr-block .more { display: inline-block; margin-top: 6px; }
+.train-card .train-btn { margin-top: auto; align-self: flex-start; }
 .g-sponsor { margin: 8px 0 0; font-size: 14px; color: #bbb; }
 .stream { display: inline-block; margin-top: 12px; background: var(--red); color: #fff; text-decoration: none; font: 800 12px/1 var(--text); letter-spacing: 2px; text-transform: uppercase; padding: 10px 14px; border-radius: 3px; }
 .stream::before { content: "\25CF  "; color: #fff; }
@@ -349,7 +354,8 @@ p { margin: 0 0 1em; }
   .site-nav a.shop { padding: 9px 14px; margin-top: 0; }
   .wrap { padding: 80px 0; }
   .cards { grid-template-columns: 1fr 1fr; gap: 24px; }
-  .next-games, .tr-grid { grid-template-columns: 1fr 1fr; }
+  .tr-grid { grid-template-columns: 1fr 1fr; }
+  .gameday { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); align-items: stretch; }
   .contact-wrap { grid-template-columns: 1.6fr 1fr; gap: 40px; }
   .topics, .row2 { grid-template-columns: 1fr 1fr; }
   .games-band { padding: 64px 0; }

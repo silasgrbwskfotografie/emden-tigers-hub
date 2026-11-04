@@ -58,7 +58,6 @@ START_SECTIONS = {
     "karten": "Nächste Spiele (Herren und Jugend) und Training",
     "news": "News (die 3 neuesten Artikel)",
     "teams": "Unsere Teams (Herren und Jugend)",
-    "training": "Training und Probetraining",
     "ergebnisse": "Zuletzt gespielt",
     "band": "Rotes Band „Lust auf Football?“",
     "sponsoren": "Unsere Sponsoren",
@@ -310,14 +309,6 @@ def home_maps_url(info):
     return f"https://www.openstreetmap.org/search?query={q}" if q else ""
 
 
-def herren_training_cards(info):
-    addr = info.get("site_training_address")
-    return f"""<div class="card"><p class="eyebrow">Training Herren</p><h3>Tackle Football</h3><p class="big-lines">{text_or_ph(info.get("site_training_times"), "Trainingszeiten")}</p></div>
-  <div class="card"><p class="eyebrow">Trainingsort Herren</p><h3>{text_or_ph(info.get("site_training_place"), "Trainingsort")}</h3>
-    <p>{text_or_ph(addr, "Adresse")}</p>
-    {f'<a class="more" href="https://www.openstreetmap.org/search?query={e(addr)}" target="_blank" rel="noopener">Anfahrt auf der Karte</a>' if addr else ''}</div>"""
-
-
 def youth_training_card(info):
     place = info.get("site_youth_training_place")
     return f"""<div class="card"><p class="eyebrow">Training Jugend</p><h3>Flag Football</h3>
@@ -351,7 +342,7 @@ def page_start(info, games, team, sponsors, insta, layout_order=None, articles=(
     <p class="eyebrow light">American Football in Emden</p>
     <h1>{e(info.get("site_hero_title") or info.get("club_name") or "Emden Tigers")}</h1>
     <p class="lead">{text_or_ph(info.get("site_hero_text"), "kurzer Einleitungssatz unter der Überschrift")}</p>
-    <div class="btns"><a class="btn red" href="#training">Probetraining</a><a class="btn ghost" href="/spielplan">Spielplan</a></div>
+    <div class="btns"><a class="btn red" href="/kontakt#formular">Probetraining</a><a class="btn ghost" href="/spielplan">Spielplan</a></div>
   </div>
 </section>"""
     order = [k for k, visible in (layout_order or [[k, True] for k in START_SECTIONS]) if visible and k in START_SECTIONS]
@@ -359,16 +350,18 @@ def page_start(info, games, team, sponsors, insta, layout_order=None, articles=(
     # Nächste Spiele über die volle Breite, Herren und Jugend nebeneinander; darunter das Training beider Teams
     sec["karten"] = f"""<section class="games-band"><div class="wrap">
   <div class="sec-head"><p class="eyebrow">Gameday</p><h2>Nächste Spiele</h2><a class="more" href="/spielplan">Ganzer Spielplan</a></div>
-  <div class="next-games">{next_game_card(info, games, "Herren", "Herren", live=True)}{next_game_card(info, games, YOUTH, "Jugend")}</div>
-</div></section>
-<section class="wrap train-strip"><div class="card"><p class="eyebrow">Training</p><h3>Komm vorbei</h3>
-  <div class="tr-grid">
-    <div class="tr-block"><p class="tr-team">Herren <span>Tackle Football</span></p><p>{text_or_ph(info.get("site_training_times"), "Trainingszeiten Herren")}</p>
-      <p class="small">{text_or_ph(info.get("site_training_place"), "Trainingsort Herren")}</p></div>
-    <div class="tr-block"><p class="tr-team">Jugend <span>Flag Football</span></p><p>{text_or_ph(info.get("site_youth_training_times"), "Trainingszeiten Jugend")}</p>
-      <p class="small">{text_or_ph(info.get("site_youth_training_place"), "Trainingsort Jugend")}</p></div>
+  <div class="gameday">
+    <div class="next-games">{next_game_card(info, games, "Herren", "Herren", live=True)}{next_game_card(info, games, YOUTH, "Jugend")}</div>
+    <div class="card train-card"><p class="eyebrow">Training</p><h3>Komm vorbei</h3>
+      <div class="tr-block"><p class="tr-team">Herren <span>Tackle Football</span></p><p>{text_or_ph(info.get("site_training_times"), "Trainingszeiten Herren")}</p>
+        <p class="small">{text_or_ph(info.get("site_training_place"), "Trainingsort Herren")}</p>
+        <a class="more" href="/herren#training">Mehr zu den Herren</a></div>
+      <div class="tr-block"><p class="tr-team">Jugend <span>Flag Football</span></p><p>{text_or_ph(info.get("site_youth_training_times"), "Trainingszeiten Jugend")}</p>
+        <p class="small">{text_or_ph(info.get("site_youth_training_place"), "Trainingsort Jugend")}</p>
+        <a class="more" href="/jugend#training">Mehr zur Jugend</a></div>
+      <a class="btn red train-btn" href="/kontakt#formular">Probetraining anfragen</a></div>
   </div>
-  <a class="more" href="#training">Alle Infos zum Training</a></div></section>"""
+</div></section>"""
     sec["wer"] = f"""<section class="split wrap reveal">
   <div class="split-img">{picture("team", "(min-width: 900px) 50vw, 100vw", meta=meta)}</div>
   <div class="split-text"><p class="eyebrow">Wer wir sind</p><h2>{e(info.get("club_name") or "Emden Tigers")}</h2>
@@ -381,15 +374,6 @@ def page_start(info, games, team, sponsors, insta, layout_order=None, articles=(
       <div><p class="eyebrow light">Tackle Football</p><h3>Herren</h3><p>Unser Tackle-Football-Team: volle Ausrüstung, volle Leidenschaft.</p><span class="more">Kader und Coaches</span></div></a>
     <a class="team-card youth" href="/jugend"><div class="team-logo"><img src="/static/logo.png" alt="" width="444" height="276" loading="lazy"></div>
       <div><p class="eyebrow light">Flag Football</p><h3>Next Generation</h3><p>Unsere Jugend: kontaktloser Football für Kinder und Jugendliche.</p><span class="more">Zur Jugend</span></div></a>
-  </div>
-</section>"""
-    sec["training"] = f"""<section class="wrap reveal" id="training">{section_head("Mitmachen", "Training und Probetraining")}
-  <p class="intro-text">Bei den Tigers kannst du jederzeit reinschnuppern. Such dir die passende Mannschaft aus, komm zum Training und lern das Team kennen.
-  Ob du schon Football gespielt hast oder den Sport erst entdecken willst: Wir freuen uns auf dich.</p>
-  <div class="split-info three">{herren_training_cards(info)}{youth_training_card(info)}</div>
-  <div class="trial-note">
-    <p>{text_or_ph(info.get("site_trial_text"), "Hinweise zum Probetraining (was mitbringen, Alter, Ausrüstung)")}</p>
-    <div class="btns"><a class="btn red" href="/kontakt?anliegen=herren#formular">Probetraining Herren anfragen</a><a class="btn dark" href="/kontakt?anliegen=jugend#formular">Probetraining Jugend anfragen</a></div>
   </div>
 </section>"""
     sec["news"] = (f'''<section class="wrap reveal">{section_head("Aktuelles", "News", '<a class="more" href="/news">Alle News</a>')}
@@ -456,7 +440,7 @@ def page_herren(info, team, games):
     body = f"""<section class="page-hero team-hero">{picture("team", "100vw", "hero-img", eager=True)}<div class="hero-text"><p class="eyebrow light">Tackle Football</p><h1>Herren</h1>
   <p class="lead">Volle Ausrüstung, volle Leidenschaft: unser Team für echten American Football.</p>
   <div class="btns"><a class="btn red" href="/kontakt?anliegen=herren#formular">Probetraining anfragen</a><a class="btn ghost" href="/spielplan#herren">Spielplan</a></div></div></section>
-<section class="split wrap reveal team-intro">
+<section class="split wrap reveal team-intro" id="training">
   <div class="split-text"><p class="eyebrow">Unser Team</p><h2>Die Herren der Tigers</h2>
     <p>Hinter jedem Spielzug steckt ein ganzes Team. Bei den Herren spielen Footballer aus Emden und ganz Ostfriesland Tackle Football mit voller Ausrüstung.
     Manche spielen seit Jahren Football, andere haben erst bei uns angefangen. Neue Spieler sind jederzeit willkommen: Komm einfach zum Probetraining.</p></div>
@@ -580,7 +564,7 @@ def page_jugend(info, team, games):
     <div><b>Alter</b><span>{e(ages) if ages else placeholder("Altersgruppen")}</span></div>
   </div>
 </section>
-<section class="wrap split-info">
+<section class="wrap split-info" id="training">
   {youth_training_card(info)}
   <div class="card"><p class="eyebrow">Für Eltern</p><h3>Erst mal reinschnuppern</h3>
     <p>Ihr Kind möchte Flag Football ausprobieren? Schreiben Sie uns kurz über das Formular, wir melden uns mit allen Infos zum ersten Training.
