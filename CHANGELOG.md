@@ -4,6 +4,10 @@
 - News auf der Webseite: Übersicht unter /news, jeder Artikel mit eigener Adresse (/news/<nummer>-<titel>), im Menü und Footer;
   die 3 neuesten Artikel auf der Startseite (Abschnitt „News“, im Hub sortier- und ausblendbar)
   - Im Hub unter Medien > News: Überschrift, Datum, Entwurf oder Veröffentlicht, Vorspann, Text, Foto mit Bildbeschreibung, optional Mannschaft und Spiel (zeigt Paarung und Ergebnis)
+  - Block-Editor für Artikel: Absatz (mit Fett und Link), Zwischentitel, Zitat mit Quelle, Liste, Hervorhebung, roter Kasten mit Knopf, Bild aus der Mediathek, Kleingedrucktes;
+    Blöcke verschieben und löschen, fertige HTML-Artikel per „HTML-Datei einlesen“ automatisch in Blöcke zerlegen
+  - Unter jedem Artikel automatisch der rote Kasten zum Probetraining (Text unter Webseite > Texte > News, Jugend-Artikel führen zum Probetraining Jugend)
+    und „Foto: …“ mit Link zum Fotografen (Felder Fotograf und Link im Artikel, @instagram oder https)
   - Text wahlweise als HTML (Zwischentitel, Fett, Listen, Links, Zitate); die Webseite lässt nur diese Auszeichnung durch, Skripte, Bilder und Einbettungen werden entfernt
   - Sichtbar erst ab dem Datum und nur als „Veröffentlicht“, interne Notizen nie öffentlich; Artikel in der Sitemap und als NewsArticle für Google
 - Livescore auf der Startseite: Die Herren-Karte unter „Nächste Spiele“ zeigt während des Spiels den Spielstand statt „VS“,

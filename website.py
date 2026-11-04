@@ -745,9 +745,35 @@ def clean_html(t):
     return f.result()
 
 
+def render_blocks(blocks):
+    """Blöcke aus dem Editor (vom Server schon geprüft). Fließtext darf einfache Auszeichnung enthalten (clean_html), sonst nur Text."""
+    out = []
+    for b in blocks:
+        t = b["t"]
+        if t == "p":
+            out.append(f'<p>{clean_html(b["text"]).replace(chr(10), "<br>")}</p>')
+        elif t == "h":
+            out.append(f"<h2>{e(b['text'])}</h2>")
+        elif t == "quote":
+            out.append(f'<blockquote><p>{lines(b["text"])}</p>{f"<footer>{e(b['by'])}</footer>" if b.get("by") else ""}</blockquote>')
+        elif t == "list":
+            out.append("<ul>" + "".join(f"<li>{clean_html(x)}</li>" for x in b["items"]) + "</ul>")
+        elif t == "highlight":
+            out.append(f'<p class="art-highlight">{e(b["text"])}</p>')
+        elif t == "cta":
+            btn = f'<a class="btn dark" href="{e(b["link"])}">{e(b["label"] or "Mehr erfahren")}</a>' if b.get("link") else ""
+            out.append(f'<aside class="art-cta"><p>{lines(b["text"])}</p>{btn}</aside>')
+        elif t == "image":
+            cap = f"<figcaption>{e(b['caption'])}</figcaption>" if b.get("caption") else ""
+            out.append(f'<figure class="art-img"><img src="{e(b["src"])}" alt="{e(b.get("alt"))}" loading="lazy" decoding="async">{cap}</figure>')
+        elif t == "note":
+            out.append(f'<p class="art-note">{e(b["text"])}</p>')
+    return "".join(out)
+
+
 def plain_text(t, fmt="Text"):
     """Reiner Text (für Vorspann, Beschreibung bei Google): bei HTML ohne Tags."""
-    if fmt != "HTML":
+    if fmt not in ("HTML", "Blöcke"):
         return str(t or "")
     inline = re.sub(r"</?(strong|b|em|i|u|a)\b[^>]*>", "", clean_html(t))   # Fett, Kursiv, Links ohne Leerzeichen entfernen
     return re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]*>", " ", inline))).strip()
@@ -774,6 +800,18 @@ def page_news(info, articles):
     return layout("news", "News", "Neuigkeiten, Spielberichte und Termine der Emden Tigers.", body, info)
 
 
+def article_footer(info, a):
+    """Unter jedem Artikel: Kasten zum Probetraining (Mannschaft des Artikels) und der Fotograf mit Link."""
+    text = (info.get("site_news_cta_text") or "").strip()
+    label = (info.get("site_news_cta_button") or "").strip() or "Zum Probetraining"
+    topic = "jugend" if a.get("team") == YOUTH else "herren"
+    cta = (f'<aside class="art-cta"><p>{lines(text)}</p><a class="btn dark" href="/kontakt?anliegen={topic}#formular">{e(label)}</a></aside>'
+           if text else "")
+    by = a.get("photo_by") or ""
+    who = (f'<a href="{e(a["photo_url"])}" target="_blank" rel="noopener">{e(by)}</a>' if a.get("photo_url") else e(by)) if by else ""
+    return cta + (f'<p class="art-credit">Foto: {who}</p>' if who else "")
+
+
 def page_article(info, a, games):
     g = next((x for x in games if a.get("game_id") and x.get("id") == a["game_id"]), None)
     img = f'<figure class="art-img"><img src="{e(a["image"])}" alt="{e(a["image_alt"])}" decoding="async"></figure>' if a["image"] else ""
@@ -784,7 +822,8 @@ def page_article(info, a, games):
   {f'<p class="lead">{e(a["teaser"])}</p>' if a["teaser"] else ""}
   {img}
   {f'<div class="art-game">{game_card(g, info)}</div>' if g else ""}
-  <div class="art-body">{clean_html(a["body"]) if a.get("format") == "HTML" else paragraphs(a["body"])}</div>
+  <div class="art-body">{render_blocks(a.get("blocks") or []) if a.get("format") == "Blöcke" else clean_html(a["body"]) if a.get("format") == "HTML" else paragraphs(a["body"])}</div>
+  {article_footer(info, a)}
   <p><a class="more" href="/news">Alle News</a></p>
 </article>"""
     base = getattr(_ctx, "base", "")

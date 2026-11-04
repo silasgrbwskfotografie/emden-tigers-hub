@@ -305,9 +305,11 @@ TABLES = {
         "title": "TEXT",
         "teaser": "TEXT",                          # kurzer Vorspann für Liste und Startseite
         "body": "TEXT",                            # Text, Absätze durch Leerzeilen (oder HTML, siehe format)
-        "format": "TEXT DEFAULT 'Text'",           # Text / HTML (HTML wird beim Anzeigen gefiltert: website.clean_html)
+        "format": "TEXT DEFAULT 'Text'",           # Blöcke (JSON aus dem Editor) / Text / HTML (HTML wird beim Anzeigen gefiltert: website.clean_html)
         "image": "TEXT",                           # Foto aus der Mediathek (/media/...)
         "image_alt": "TEXT",
+        "photo_by": "TEXT",                        # Fotograf, steht unter dem Artikel ("Foto: ...")
+        "photo_url": "TEXT",                       # Link zum Fotografen (https oder @instagram)
         "date": "TEXT",                            # Veröffentlichungsdatum, vorher nicht sichtbar
         "status": "TEXT DEFAULT 'Entwurf'",        # Entwurf / Veröffentlicht
         "team": "TEXT",                            # optional: Herren / Next Generation
@@ -396,6 +398,9 @@ DEFAULT_SETTINGS = {
     "site_card_short": "Unterstütze die Tigers eine ganze Saison lang und zeig, dass du hinter dem Team stehst.",
     "site_card_text": "Mit der Supporter Karte unterstützt du die Emden Tigers eine ganze Saison lang und zeigst, dass du hinter dem Team stehst. "
                       "Alle Infos zur Karte bekommst du bei uns über das Kontaktformular oder per Nachricht auf Instagram.",
+    # Kasten unter jedem News-Artikel (Knopf führt zum Probetraining der Mannschaft des Artikels)
+    "site_news_cta_text": "Lust, selbst Teil des Teams zu werden? Komm zum Probetraining, Neulinge ohne Football-Erfahrung sind ausdrücklich willkommen.",
+    "site_news_cta_button": "Zum Probetraining",
     "site_sponsor_text": "Ohne unsere Partner wäre Football in Emden nicht möglich. Sie machen Trainingsbetrieb, Ausrüstung und Spieltage erst möglich. "
                          "Du möchtest die Tigers mit deinem Unternehmen unterstützen? Wir stellen gern ein Paket zusammen, das zu dir passt, "
                          "vom Spieltagssponsor bis zum Trikotsponsor. Schreib uns einfach über das Kontaktformular.",
@@ -419,7 +424,7 @@ DEFAULT_SETTINGS = {
     "web_images": "{}",
     "web_layout": "",
 }
-SITE_TEXTS_VERSION = "4"   # erhöhen, wenn neue Standardtexte in leere Felder bestehender Server übernommen werden sollen
+SITE_TEXTS_VERSION = "5"   # erhöhen, wenn neue Standardtexte in leere Felder bestehender Server übernommen werden sollen
 
 
 DB_LOCK = threading.RLock()   # exklusiv beim Einspielen eines Backups
@@ -1053,6 +1058,43 @@ def article_slug(a):
     return f"{a['id']}-" + (re.sub(r"[^a-z0-9]+", "-", t).strip("-")[:60].strip("-") or "artikel")
 
 
+ARTICLE_BLOCKS = {   # Blocktyp -> erlaubte Felder (alles andere wird verworfen)
+    "p": ("text",), "h": ("text",), "quote": ("text", "by"), "list": ("items",), "highlight": ("text",),
+    "cta": ("text", "label", "link"), "image": ("src", "alt", "caption"), "note": ("text",),
+}
+
+
+def article_blocks(raw, key):
+    """Blöcke aus dem Editor prüfen: nur bekannte Typen und Felder, Längen begrenzt, Bilder nur aus der Mediathek (signiert), Links geprüft."""
+    try:
+        data = json.loads(raw or "[]")
+    except ValueError:
+        return []
+    out = []
+    for b in data if isinstance(data, list) else []:
+        if not isinstance(b, dict) or b.get("t") not in ARTICLE_BLOCKS:
+            continue
+        row = {"t": b["t"]}
+        for f in ARTICLE_BLOCKS[b["t"]]:
+            v = b.get(f)
+            if f == "items":
+                row[f] = [str(x)[:500] for x in (v if isinstance(v, list) else str(v or "").splitlines()) if str(x).strip()][:30]
+            else:
+                row[f] = str(v or "").strip()[:4000]
+        if row["t"] == "image":
+            row["src"] = public_image(row["src"], key)
+            if not row["src"]:
+                continue
+        if row["t"] == "cta":
+            link = row["link"]
+            row["link"] = link if re.fullmatch(r"(https?://[^\s\"'<>]+|/(?!/)[^\s\"'<>]*|mailto:[^\s\"'<>]+)", link) else ""
+        if any(row[f] for f in ARTICLE_BLOCKS[row["t"]]):
+            out.append(row)
+        if len(out) >= 80:
+            break
+    return out
+
+
 def public_articles():
     """Veröffentlichte Artikel ab ihrem Datum, neueste zuerst. Nur feste Felder, keine Notizen."""
     key = social_config()["share_key"]
@@ -1060,10 +1102,32 @@ def public_articles():
     with db() as conn:
         rows = conn.execute("SELECT * FROM articles WHERE status='Veröffentlicht' AND IFNULL(date,'') != '' AND date <= ? "
                             "AND IFNULL(title,'') != '' ORDER BY date DESC, id DESC", (today,)).fetchall()
-    return [{"id": a["id"], "slug": article_slug(a), "title": a["title"], "teaser": a["teaser"] or "", "body": a["body"] or "",
-             "format": "HTML" if a["format"] == "HTML" else "Text",
-             "date": a["date"], "image": public_image(a["image"], key), "image_alt": a["image_alt"] or "",
-             "team": a["team"] if a["team"] in TEAMS else "", "game_id": a["game_id"] or None} for a in rows]
+    out = []
+    for a in rows:
+        fmt = a["format"] if a["format"] in ("Blöcke", "HTML") else "Text"
+        blocks = article_blocks(a["body"], key) if fmt == "Blöcke" else []
+        body = "\n\n".join(b.get("text", "") for b in blocks if b["t"] in ("p", "h")) if fmt == "Blöcke" else (a["body"] or "")
+        out.append(article_public(a, key, fmt, body, blocks))
+    return out
+
+
+def photo_link(v):
+    """Link zum Fotografen: https-Adresse oder @instagram-Name, sonst leer."""
+    v = (v or "").strip()
+    m = re.fullmatch(r"@([A-Za-z0-9._]{1,30})", v)
+    if m:
+        return f"https://www.instagram.com/{m.group(1)}/"
+    if re.fullmatch(r"[A-Za-z0-9.-]+\.[a-z]{2,}(/\S*)?", v):   # z. B. silasgrbwskfotografie.de ohne https://
+        v = "https://" + v
+    return v if re.fullmatch(r"https://[^\s\"'<>]+", v) else ""
+
+
+def article_public(a, key, fmt, body, blocks):
+    return {"id": a["id"], "slug": article_slug(a), "title": a["title"], "teaser": a["teaser"] or "", "body": body,
+            "format": fmt, "blocks": blocks,
+            "date": a["date"], "image": public_image(a["image"], key), "image_alt": a["image_alt"] or "",
+            "photo_by": (a["photo_by"] or "").strip()[:80], "photo_url": photo_link(a["photo_url"]),
+            "team": a["team"] if a["team"] in TEAMS else "", "game_id": a["game_id"] or None}
 
 
 def public_sponsors():

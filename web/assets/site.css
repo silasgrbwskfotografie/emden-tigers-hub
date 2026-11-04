@@ -373,6 +373,21 @@ p { margin: 0 0 1em; }
 .art-body blockquote { margin: 0 0 18px; padding: 8px 0 8px 18px; border-left: 4px solid var(--red); font-style: italic; }
 .art-body hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
 .art-body a { color: var(--red); font-weight: 700; }
+.art-body h2 { color: var(--red); }
+.art-body blockquote { background: var(--card); font-size: 18px; padding: 18px 22px; border-radius: 0 4px 4px 0; }
+.art-body blockquote p { margin: 0; }
+.art-body blockquote footer { margin-top: 10px; font-style: normal; font-size: 14px; color: var(--muted); }
+.art-body .art-highlight { font: 400 clamp(26px, 7vw, 36px)/1.1 var(--head); text-transform: uppercase; margin: 28px 0; }
+.art-cta { background: var(--red); color: #fff; padding: 22px 24px; border-radius: 4px; margin: 28px 0; }
+.art-cta p { margin: 0 0 14px !important; color: #fff; }
+.art-body .art-cta a.btn { color: #fff; }
+.art-body figure.art-img { margin: 24px 0; }
+.art-body figure.art-img img { max-width: 100%; }
+.art-body figcaption { font-size: 14px; color: var(--muted); margin-top: 6px; }
+.art-note { font-size: 14px !important; color: var(--muted); }
+.article > .art-cta .btn { color: #fff; }
+.art-credit { font-size: 14px; color: var(--muted); margin: 0 0 24px; }
+.art-credit a { color: var(--ink); font-weight: 700; }
 @media (prefers-reduced-motion: reduce) { .news-card:hover { transform: none; } }
 
 /* Einblenden beim Scrollen (nur mit JavaScript, ohne Bewegung bei reduzierter Bewegung) */

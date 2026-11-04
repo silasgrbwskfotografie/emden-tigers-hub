@@ -28,6 +28,9 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
   (nur sichtbarer Tab, nur `textContent`, Reihenfolge nach den Logos der Karte, nur passendes Spiel per `data-game`), Hub-Adresse `HUB_URL` in site.js (leer = gleiche Adresse).
   News: Tabelle `articles` (Bereich Medien, Hub-Seite `#/news`), öffentlich nur über `public_articles` (Status „Veröffentlicht“, Datum erreicht, ohne `notes`).
   Seiten `/news` (`page_news`) und `/news/<id>-<titel>` (`page_article`, falsche Schreibweise per 301 auf `article_slug`), die 3 neuesten im Startseiten-Abschnitt `news`.
+  Standard ist `articles.format` = „Blöcke“: JSON aus dem Block-Editor (`editArticle` in pages.js, Import fertiger HTML-Artikel per `htmlToArticle`),
+  der Server lässt nur `ARTICLE_BLOCKS` mit ihren Feldern durch (`article_blocks`: Bilder nur aus der Mediathek, signiert; Knopf-Links geprüft), die Webseite baut sie mit `render_blocks`.
+  Unter jedem Artikel `article_footer`: Probetraining-Kasten (`site_news_cta_text`) und Fotograf (`photo_by`, Link nur über `photo_link`: https oder @instagram).
   Text als Absätze über `paragraphs()`; mit `articles.format` = „HTML“ nur über `clean_html()` (Whitelist: p, h2 bis h4, strong, em, u, Listen, a mit geprüftem href, blockquote, br, hr; keine Attribute, Skripte, Bilder, Einbettungen). Neue Startseiten-Abschnitte setzt `web_layout` an ihren Standardplatz.
   Mannschaften: `TEAMS` (Herren, Next Generation) in server.py, website.py und pages.js gleich halten. `players.team`, `games.team`.
   Spieler der Next Generation (Minderjährige) gibt `public_team` nie aus, nur deren Coaches und Staff.
