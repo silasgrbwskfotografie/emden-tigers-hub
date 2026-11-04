@@ -24,7 +24,7 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
   Google: `structured_head` in website.py (canonical, `org_ld` SportsTeam, `game_ld` SportsEvent mit Zeitzone `berlin_offset`), `/sitemap.xml` und `/robots.txt`
   ohne Sitzung; absolute Adressen aus `SITE_URL` (sonst Host-Header über `base_url`). Neue öffentliche Seiten auch in `website.sitemap` eintragen.
   Livestream: `games.stream_url`, öffentlich nur als geprüfter https-Link (`public_games` -> `stream`).
-  Livescore auf der Startseite: `next_game_card(..., live=True)` (nur Herren) baut leere Plätze, `site.js` liest `/public/live` alle 5 Sekunden
+  Livescore auf Startseite und Herrenseite: `next_game_card(..., live=True)` (nur Herren, höchstens eine Karte pro Seite) baut leere Plätze, `site.js` liest `/public/live` alle 5 Sekunden
   (nur sichtbarer Tab, nur `textContent`, Reihenfolge nach den Logos der Karte, nur passendes Spiel per `data-game`), Hub-Adresse `HUB_URL` in site.js (leer = gleiche Adresse).
   News: Tabelle `articles` (Bereich Medien, Hub-Seite `#/news`), öffentlich nur über `public_articles` (Status „Veröffentlicht“, Datum erreicht, ohne `notes`).
   Seiten `/news` (`page_news`) und `/news/<id>-<titel>` (`page_article`, falsche Schreibweise per 301 auf `article_slug`), die 3 neuesten im Startseiten-Abschnitt `news`.

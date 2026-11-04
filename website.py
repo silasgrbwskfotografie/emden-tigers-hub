@@ -254,7 +254,8 @@ def next_game(games):
     return next((g for g in games if g["date"] >= today), None)
 
 
-def game_card(g, info, big=False, live=False):
+def game_card(g, info, big=False, live=False, own=False):
+    """Spielkarte. live: Plätze für den Livescore (site.js). own: die Karte selbst trägt data-live (Spielplan, Listen)."""
     club = info.get("club_name") or "Emden Tigers"
     o = (g.get("opponent") or {}).get("name") or "Gegner offen"
     home = g["home"]
@@ -275,7 +276,8 @@ def game_card(g, info, big=False, live=False):
         cls = "win" if us > them else "loss" if us < them else "draw"
         left, right = (us, them) if g["home"] else (them, us)   # Ergebnis in derselben Reihenfolge wie die Logos
         result = f'<div class="result {cls}">{left}:{right}</div>'
-    return f"""<article class="game {'big' if big else ''} {'home' if home else 'away'}">
+    attrs = f' data-live data-game="{g.get("id") or ""}" data-home="{1 if home else 0}"' if live and own and g["score_us"] is None else ""
+    return f"""<article class="game {'big' if big else ''} {'home' if home else 'away'}"{attrs}>
       <div class="g-date"><b>{e(fmt_date(g['date'], True))}</b>{f'<span>{e(g["time"])} Uhr</span>' if g['time'] else ''}</div>
       {'<div class="live-chips" hidden><span class="chip live" data-l="state">Live</span><span class="chip" data-l="period" hidden></span><span class="chip dim" data-l="down" hidden></span><span class="chip stale" data-l="stale" hidden>Live Ticker pausiert</span></div>' if live else ''}
       <div class="g-teams">{teams}</div>
@@ -331,12 +333,17 @@ def youth_training_card(info):
     return training_card(info.get("site_youth_training_times"), info.get("site_youth_training_place"), "", "Flag Football", "Next Generation")
 
 
-def team_games(info, games, team, title="Nächste Spiele", skip=0):
+def team_games(info, games, team, title="Nächste Spiele", skip=0, always=False):
+    """Kommende Spiele einer Mannschaft. always: Abschnitt auch ohne Termine zeigen (mit Hinweis)."""
     today = date.today().isoformat()
     up = [g for g in games if g.get("team", "Herren") == team and g["date"] >= today][skip:skip + 4]   # skip: oben schon gezeigt
     slug = TEAM_SLUG[team]
-    return (f'''<section class="wrap reveal">{section_head("Spielplan", title, f'<a class="more" href="/spielplan#{slug}">Ganzer Spielplan</a>')}
-  <div class="games">{"".join(game_card(g, info) for g in up)}</div></section>''' if up else '')
+    if not up and not always:
+        return ""
+    inner = (f'<div class="games">{"".join(game_card(g, info, live=team == "Herren", own=True) for g in up)}</div>' if up
+             else '<div class="card next none"><p class="ng-none"><b>Termine folgen</b><span>Die nächsten Spieltage stehen hier, sobald sie feststehen.</span></p></div>')
+    return f'''<section class="wrap reveal">{section_head("Spielplan", title, f'<a class="more" href="/spielplan#{slug}">Ganzer Spielplan</a>')}
+  {inner}</section>'''
 
 
 # ---------------------------------------------------------------------------
@@ -459,7 +466,7 @@ def page_herren(info, team, games):
   {training_card(info.get("site_training_times"), info.get("site_training_place"), addr, "Tackle Football", "Herren")}
 </section>
 <section class="wrap split-info top-info">
-  {next_game_card(info, games, "Herren")}
+  {next_game_card(info, games, "Herren", live=True)}
   <div class="card"><p class="eyebrow">Probetraining</p><h3>Werde Teil der Tigers</h3>
     <p>{text_or_ph(info.get("site_trial_text"), "Hinweise zum Probetraining")}</p>
     <a class="btn red" href="/kontakt?anliegen=herren#formular" style="margin-top:12px">Probetraining anfragen</a></div>
@@ -484,7 +491,7 @@ def page_schedule(info, games):
         up = [g for g in gs if g["date"] >= today]
         done = [g for g in gs if g["date"] < today][::-1]
         return (f'<h3 class="unit">Saison {e(s)}</h3>'
-                + (f'<h4 class="pos">Kommende Spiele</h4><div class="games">{"".join(game_card(g, info) for g in up)}</div>' if up else '')
+                + (f'<h4 class="pos">Kommende Spiele</h4><div class="games">{"".join(game_card(g, info, live=g.get("team", "Herren") == "Herren", own=True) for g in up)}</div>' if up else '')
                 + (f'<h4 class="pos">Ergebnisse</h4><div class="games">{"".join(game_card(g, info) for g in done)}</div>' if done else ''))
     def team_block(t):
         gs = [g for g in games if g.get("team", "Herren") == t]
@@ -591,7 +598,7 @@ def page_jugend(info, team, games):
 <section class="wrap" id="coaches">{section_head("Coaching Staff", "Coaches")}
   {f'<div class="coaches">{"".join(coach_card(p) for p in coaches)}</div>' if coaches else '<p>Die Coaches der Next Generation werden bald hier vorgestellt.</p>'}
   <p class="small muted">Zum Schutz der Kinder und Jugendlichen zeigen wir die Spielerinnen und Spieler der Jugend nicht auf der Webseite.</p></section>
-{team_games(info, games, YOUTH, "Nächste Spieltage")}"""
+{team_games(info, games, YOUTH, "Nächste Spieltage", always=True)}"""
     return layout("jugend", "Jugend", "Next Generation: die Flag-Football-Jugend der Emden Tigers. Kontaktloser Football für Kinder und Jugendliche in Emden.", body, info)
 
 

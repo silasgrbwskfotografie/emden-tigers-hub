@@ -146,12 +146,16 @@ p { margin: 0 0 1em; }
 .tag { background: var(--red); color: #fff; font-weight: 800; padding: 1px 8px; border-radius: 3px; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
 .game.away .tag { background: #444; }
 /* Livescore auf der Herren-Karte (site.js) */
-.card.next [hidden] { display: none !important; }
+.card.next [hidden], [data-live] [hidden] { display: none !important; }
+/* Kleine Spielkarte (Spielplan, Herren weitere Spiele) im Livescore */
+.game:not(.big) .g-score { font-size: clamp(30px, 8vw, 40px); line-height: 64px; color: var(--ink); }
+.game:not(.big) .live-chips { margin-top: 8px; }
+.game.is-live:not(.big) { border-left-color: var(--red); box-shadow: 0 0 0 2px var(--red), 0 6px 18px rgba(0,0,0,.06); }
 .g-mid { display: grid; place-items: center; }
 .g-score { font: 400 clamp(40px, 11vw, 60px)/64px var(--head); color: #fff; white-space: nowrap; letter-spacing: 1px; }
 .g-score i { font-style: normal; color: var(--red); margin: 0 .08em; }
 .g-score.flash { animation: score-flash 1.2s ease-out; }
-@keyframes score-flash { 0% { color: #ff4d57; transform: scale(1.08); } 100% { color: #fff; transform: none; } }
+@keyframes score-flash { from { color: #ff4d57; transform: scale(1.08); } }   /* endet in der normalen Farbe der Karte */
 .live-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .chip { font: 800 11px/1 var(--text); letter-spacing: 2px; text-transform: uppercase; padding: 7px 10px; border-radius: 3px; background: #2a2a2a; color: #fff; }
 .chip.live { background: var(--red); }
