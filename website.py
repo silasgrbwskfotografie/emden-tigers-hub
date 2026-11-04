@@ -30,7 +30,7 @@ SITE_SPONSOR = {
     "url": "https://silasgrbwskfotografie.de",
     "instagram": "silasgrbwsk.fotografie",
 }
-NAV = [("", "Start"), ("herren", "Herren"), ("jugend", "Jugend"), ("spielplan", "Spielplan"), ("sponsoren", "Sponsoren"), ("kontakt", "Kontakt")]
+NAV = [("", "Start"), ("herren", "Herren"), ("jugend", "Jugend"), ("spielplan", "Spielplan"), ("news", "News"), ("sponsoren", "Sponsoren"), ("kontakt", "Kontakt")]
 # Alte Adressen (erste Fassung der Webseite) leiten dauerhaft auf die neuen Seiten weiter
 REDIRECTS = {"team": "/herren", "next-generation": "/jugend", "probetraining": "/kontakt"}
 TEAMS = ("Herren", "Next Generation")   # wie TEAMS in server.py
@@ -56,6 +56,7 @@ IMAGE_SLOTS = {
 START_SECTIONS = {
     "wer": "Wer wir sind",
     "karten": "Nächste Spiele (Herren und Jugend) und Training",
+    "news": "News (die 3 neuesten Artikel)",
     "teams": "Unsere Teams (Herren und Jugend)",
     "training": "Training und Probetraining",
     "ergebnisse": "Zuletzt gespielt",
@@ -233,7 +234,7 @@ def layout(slug, title, description, body, info, extra_head=""):
       <p>{f'<a href="mailto:{e(mail)}">{e(mail)}</a>' if mail else placeholder("Kontakt-E-Mail")}<br>
       <a href="/kontakt#formular">Kontaktformular</a></p>
       {f'<p><a href="https://www.instagram.com/{e(ig)}/" rel="noopener" target="_blank">Instagram @{e(ig)}</a></p>' if ig else ''}</div>
-    <div><h4>Verein</h4><p><a href="/herren">Herren</a><br><a href="/jugend">Jugend</a><br><a href="/spielplan">Spielplan</a><br><a href="/sponsoren">Sponsoren</a><br><a href="/kontakt">Kontakt</a>{f'<br><a href="{e(shop)}" target="_blank" rel="noopener">Fanshop</a>' if shop else ''}</p></div>
+    <div><h4>Verein</h4><p><a href="/herren">Herren</a><br><a href="/jugend">Jugend</a><br><a href="/spielplan">Spielplan</a><br><a href="/news">News</a><br><a href="/sponsoren">Sponsoren</a><br><a href="/kontakt">Kontakt</a>{f'<br><a href="{e(shop)}" target="_blank" rel="noopener">Fanshop</a>' if shop else ''}</p></div>
     <div><h4>Rechtliches</h4><p><a href="/impressum">Impressum</a><br><a href="/datenschutz">Datenschutz</a><br><a class="members" href="/hub">Mitgliederbereich</a></p></div>
   </div>
   <p class="copy">© {datetime.now().year} {e(club)}. Fotos: silasgrbwsk.fotografie</p>
@@ -336,7 +337,7 @@ def team_games(info, games, team, title="Nächste Spiele", skip=0):
 # ---------------------------------------------------------------------------
 # Seiten
 # ---------------------------------------------------------------------------
-def page_start(info, games, team, sponsors, insta, layout_order=None):
+def page_start(info, games, team, sponsors, insta, layout_order=None, articles=()):
     meta = image_meta()
     played = [g for g in games if g["score_us"] is not None][-3:][::-1]
     ig = e(info.get("instagram") or "afc_tigers_emden")
@@ -391,6 +392,8 @@ def page_start(info, games, team, sponsors, insta, layout_order=None):
     <div class="btns"><a class="btn red" href="/kontakt?anliegen=herren#formular">Probetraining Herren anfragen</a><a class="btn dark" href="/kontakt?anliegen=jugend#formular">Probetraining Jugend anfragen</a></div>
   </div>
 </section>"""
+    sec["news"] = (f'''<section class="wrap reveal">{section_head("Aktuelles", "News", '<a class="more" href="/news">Alle News</a>')}
+  <div class="news-grid">{"".join(news_card(a) for a in articles[:3])}</div></section>''' if articles else '')
     sec["ergebnisse"] = (f'''<section class="wrap reveal">{section_head("Ergebnisse", "Zuletzt gespielt", '<a class="more" href="/spielplan">Ganzer Spielplan</a>')}
   <div class="games">{"".join(game_card(g, info) for g in played)}</div></section>''' if played else '')
     sec["band"] = """<section class="band reveal">
@@ -665,7 +668,55 @@ def page_404(info):
     return layout("", "Nicht gefunden", "", body, info)
 
 
-PAGES = ("", "herren", "jugend", "spielplan", "sponsoren", "kontakt", "supporter-karte", "impressum", "datenschutz")
+PAGES = ("", "herren", "jugend", "spielplan", "news", "sponsoren", "kontakt", "supporter-karte", "impressum", "datenschutz")
+
+
+# ---------------------------------------------------------------------------
+# News: Liste, Einzelartikel, Karten für die Startseite
+# ---------------------------------------------------------------------------
+def paragraphs(t):
+    """Text aus dem Hub als Absätze: Leerzeile = neuer Absatz, einfacher Umbruch bleibt erhalten. Kein HTML."""
+    blocks = [b.strip() for b in re.split(r"\n\s*\n", str(t or "").replace("\r", "")) if b.strip()]
+    return "".join(f"<p>{lines(b)}</p>" for b in blocks)
+
+
+def news_card(a):
+    img = (f'<img src="{e(a["image"])}" alt="{e(a["image_alt"])}" loading="lazy" decoding="async">' if a["image"]
+           else '<div class="nc-logo"><img src="/static/logo.png" alt="" loading="lazy"></div>')
+    teaser = a["teaser"] or (a["body"].strip().split("\n")[0][:180] if a["body"] else "")
+    return (f'<a class="news-card" href="/news/{e(a["slug"])}"><div class="nc-img">{img}</div><div class="nc-text">'
+            f'<p class="nc-meta">{e(fmt_date(a["date"]))}{f" · {e(a["team"])}" if a["team"] else ""}</p>'
+            f'<h3>{e(a["title"])}</h3>{f"<p>{e(teaser)}</p>" if teaser else ""}<span class="more">Weiterlesen</span></div></a>')
+
+
+def page_news(info, articles):
+    body = f"""<section class="page-hero">{picture("spiel", "100vw", "hero-img", eager=True)}<div class="hero-text"><p class="eyebrow light">Aktuelles</p><h1>News</h1></div></section>
+<section class="wrap">{f'<div class="news-grid">{"".join(news_card(a) for a in articles)}</div>' if articles else '<p>Hier erscheinen bald die ersten Neuigkeiten aus dem Verein.</p>'}</section>"""
+    return layout("news", "News", "Neuigkeiten, Spielberichte und Termine der Emden Tigers.", body, info)
+
+
+def page_article(info, a, games):
+    g = next((x for x in games if a.get("game_id") and x.get("id") == a["game_id"]), None)
+    img = f'<figure class="art-img"><img src="{e(a["image"])}" alt="{e(a["image_alt"])}" decoding="async"></figure>' if a["image"] else ""
+    body = f"""<article class="wrap narrow article">
+  <p class="eyebrow"><a href="/news">News</a></p>
+  <h1>{e(a["title"])}</h1>
+  <p class="nc-meta">{e(fmt_date(a["date"], True))}{f" · {e(a['team'])}" if a["team"] else ""}</p>
+  {f'<p class="lead">{e(a["teaser"])}</p>' if a["teaser"] else ""}
+  {img}
+  {f'<div class="art-game">{game_card(g, info)}</div>' if g else ""}
+  <div class="art-body">{paragraphs(a["body"])}</div>
+  <p><a class="more" href="/news">Alle News</a></p>
+</article>"""
+    base = getattr(_ctx, "base", "")
+    head = ""
+    if base:
+        ld = {"@context": "https://schema.org", "@type": "NewsArticle", "headline": a["title"][:110], "datePublished": a["date"],
+              "url": f"{base}/news/{a['slug']}", "publisher": {"@type": "SportsTeam", "name": info.get("club_name") or "Emden Tigers", "logo": base + "/static/logo.png"},
+              "image": [base + (a["image"] or "/static/logo.png")]}
+        head = f'<link rel="canonical" href="{e(base)}/news/{e(a["slug"])}">' + jsonld(ld)
+    desc = a["teaser"] or (a["body"] or "").strip().split("\n")[0][:160]
+    return layout("news", a["title"], desc, body, info, extra_head=head)
 
 
 def render(slug, data, sent=None):
@@ -732,12 +783,13 @@ def game_ld(g, info, base):
     return obj
 
 
-def sitemap(base):
-    """sitemap.xml mit allen öffentlichen Seiten."""
+def sitemap(base, articles=()):
+    """sitemap.xml mit allen öffentlichen Seiten und den veröffentlichten Artikeln."""
     today = date.today().isoformat()
-    pages = [("", "1.0"), ("herren", "0.8"), ("jugend", "0.8"), ("spielplan", "0.9"), ("sponsoren", "0.6"), ("kontakt", "0.6"),
+    pages = [("", "1.0"), ("herren", "0.8"), ("jugend", "0.8"), ("spielplan", "0.9"), ("news", "0.8"), ("sponsoren", "0.6"), ("kontakt", "0.6"),
              ("supporter-karte", "0.5"), ("impressum", "0.2"), ("datenschutz", "0.2")]
     rows = "".join(f"<url><loc>{escape(base)}/{s}</loc><lastmod>{today}</lastmod><priority>{p}</priority></url>" for s, p in pages)
+    rows += "".join(f"<url><loc>{escape(base)}/news/{escape(a['slug'])}</loc><lastmod>{escape(a['date'])}</lastmod><priority>0.6</priority></url>" for a in articles)
     return f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{rows}</urlset>\n'
 
 
@@ -749,7 +801,11 @@ def robots(base):
 def render_page(slug, data, sent, site):
     info = data["info"]
     if slug == "":
-        return page_start(info, data["games"], data["team"], data["sponsors"], data.get("instagram") or [], site.get("layout"))
+        return page_start(info, data["games"], data["team"], data["sponsors"], data.get("instagram") or [], site.get("layout"), data.get("articles") or [])
+    if slug == "news":
+        return page_news(info, data.get("articles") or [])
+    if slug == "news-artikel" and data.get("article"):
+        return page_article(info, data["article"], data["games"])
     if slug == "herren":
         return page_herren(info, data["team"], data["games"])
     if slug == "jugend":

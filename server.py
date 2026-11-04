@@ -301,6 +301,18 @@ TABLES = {
         "image": "TEXT",
         "answers": "TEXT",                         # Behind the Helmet: JSON {Frage: Antwort}
     },
+    "articles": {                               # News auf der Webseite (/news), im Hub unter Medien > News
+        "title": "TEXT",
+        "teaser": "TEXT",                          # kurzer Vorspann für Liste und Startseite
+        "body": "TEXT",                            # Text, Absätze durch Leerzeilen
+        "image": "TEXT",                           # Foto aus der Mediathek (/media/...)
+        "image_alt": "TEXT",
+        "date": "TEXT",                            # Veröffentlichungsdatum, vorher nicht sichtbar
+        "status": "TEXT DEFAULT 'Entwurf'",        # Entwurf / Veröffentlicht
+        "team": "TEXT",                            # optional: Herren / Next Generation
+        "game_id": "INTEGER",                      # optional: Spiel, z. B. für Spielberichte
+        "notes": "TEXT",                           # intern, nie öffentlich
+    },
     "contact_requests": {                       # Anfragen über das Kontaktformular der Webseite
         "name": "TEXT",
         "email": "TEXT",
@@ -421,6 +433,7 @@ TABLE_AREA = {
     "posts": "medien", "media": "medien", "sheet_players": "medien", "sheet_log": "medien",
     "media_team": "medien", "assignments": "medien", "magazines": "medien", "magazine_pages": "medien", "story_rules": "medien",
     "games": "verein", "opponents": "verein", "players": "verein", "sponsors": "verein",
+    "articles": "medien",
     "members": "mitglieder", "contact_requests": "mitglieder",
     "supporter_cards": "finanzen", "transactions": "finanzen",
     "apparel": "verein", "apparel_orders": "verein",
@@ -1031,6 +1044,26 @@ def public_team():
     return out
 
 
+def article_slug(a):
+    """Adresse eines Artikels: /news/<id>-<titel-ohne-sonderzeichen>. Die Zahl vorne zählt, der Rest ist nur für Leser und Google."""
+    t = (a["title"] or "").lower()
+    for k, v in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+        t = t.replace(k, v)
+    return f"{a['id']}-" + (re.sub(r"[^a-z0-9]+", "-", t).strip("-")[:60].strip("-") or "artikel")
+
+
+def public_articles():
+    """Veröffentlichte Artikel ab ihrem Datum, neueste zuerst. Nur feste Felder, keine Notizen."""
+    key = social_config()["share_key"]
+    today = datetime.now().strftime("%Y-%m-%d")
+    with db() as conn:
+        rows = conn.execute("SELECT * FROM articles WHERE status='Veröffentlicht' AND IFNULL(date,'') != '' AND date <= ? "
+                            "AND IFNULL(title,'') != '' ORDER BY date DESC, id DESC", (today,)).fetchall()
+    return [{"id": a["id"], "slug": article_slug(a), "title": a["title"], "teaser": a["teaser"] or "", "body": a["body"] or "",
+             "date": a["date"], "image": public_image(a["image"], key), "image_alt": a["image_alt"] or "",
+             "team": a["team"] if a["team"] in TEAMS else "", "game_id": a["game_id"] or None} for a in rows]
+
+
 def public_sponsors():
     key = social_config()["share_key"]
     with db() as conn:
@@ -1496,7 +1529,13 @@ def web_layout(conn):
         if isinstance(item, list) and len(item) == 2 and item[0] in website.START_SECTIONS and item[0] not in seen:
             out.append([item[0], bool(item[1])])
             seen.add(item[0])
-    return out + [[k, True] for k in website.START_SECTIONS if k not in seen]
+    keys = list(website.START_SECTIONS)
+    for i, k in enumerate(keys):   # neue Abschnitte an ihren Standardplatz, hinter den Abschnitt davor
+        if k not in seen:
+            prev = next((j for j, (x, _) in enumerate(out) if i and x == keys[i - 1]), None)
+            out.insert(prev + 1 if prev is not None else len(out), [k, True])
+            seen.add(k)
+    return out
 
 
 def public_site():
@@ -2613,7 +2652,7 @@ class Handler(BaseHTTPRequestHandler):
         if head == "kontakt" and method == "POST":
             return self.public_contact()
         if method == "GET" and p in (["sitemap.xml"], ["robots.txt"]):
-            body = (website.sitemap(self.base_url()) if head == "sitemap.xml" else website.robots(self.base_url())).encode("utf-8")
+            body = (website.sitemap(self.base_url(), public_articles()) if head == "sitemap.xml" else website.robots(self.base_url())).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/xml; charset=utf-8" if head == "sitemap.xml" else "text/plain; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -2650,6 +2689,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.redirect(website.REDIRECTS[head] + ("?" + q if q else ""), 301)
         if method == "GET" and (not p or (len(p) == 1 and head in website.PAGES)):
             return self.send_site(head)
+        if method == "GET" and head == "news" and len(p) == 2:   # einzelner Artikel, nur veröffentlichte
+            m = re.match(r"(\d{1,9})(?:-|$)", p[1])
+            a = next((x for x in public_articles() if m and x["id"] == int(m.group(1))), None)
+            if not a:
+                return self.send_site("404", 404)
+            if p[1] != a["slug"]:   # alte oder gekürzte Adresse: auf die aktuelle weiterleiten
+                return self.redirect(f"/news/{a['slug']}", 301)
+            return self.send_site("news-artikel", article=a)
         if method == "GET" and p[:2] == ["web", "assets"]:
             return self.serve_under(website.WEB / "assets", p[2:], cache=True)
         if method == "GET" and p[:2] == ["web", "insta"] and len(p) == 3:
@@ -2696,10 +2743,11 @@ class Handler(BaseHTTPRequestHandler):
         host = self.headers.get("Host") or ""
         return f"https://{host}" if re.fullmatch(r"[A-Za-z0-9.\-]+(:\d{1,5})?", host) else ""
 
-    def send_site(self, slug, status=200):
+    def send_site(self, slug, status=200, article=None):
         """Seite der öffentlichen Webseite aus den öffentlichen Daten bauen."""
         data = {"info": public_info(), "games": public_games(), "team": public_team(), "sponsors": public_sponsors(),
-                "instagram": public_instagram() if slug == "" else [], "site": public_site(), "base": self.base_url()}
+                "instagram": public_instagram() if slug == "" else [], "site": public_site(), "base": self.base_url(),
+                "articles": public_articles() if slug in ("", "news", "sitemap") else [], "article": article}
         q = parse_qs(urlparse(self.path).query)
         sent = (q.get("gesendet") or [None])[0]
         data["preselect"] = (q.get("anliegen") or [""])[0]   # Vorauswahl im Kontaktformular (website.py prüft den Wert)

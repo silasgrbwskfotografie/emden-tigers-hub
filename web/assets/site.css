@@ -293,6 +293,30 @@ p { margin: 0 0 1em; }
 .members { opacity: .7; font-size: 14px; }
 .copy { width: min(var(--wrap), 100% - 32px); margin: 32px auto 0; padding-top: 18px; border-top: 1px solid #222; font-size: 13px; color: #888; }
 
+/* News: Karten (Liste und Startseite) und Artikel */
+.news-grid { display: grid; gap: 20px; }
+.news-card { display: flex; flex-direction: column; background: var(--card); border-radius: 4px; overflow: hidden; box-shadow: 0 6px 18px rgba(0,0,0,.07);
+  text-decoration: none; color: var(--ink); border-bottom: 3px solid var(--red); transition: transform .2s; }
+.news-card:hover { transform: translateY(-3px); }
+.nc-img { aspect-ratio: 16/10; background: var(--black); overflow: hidden; }
+.nc-img > img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.nc-logo { height: 100%; display: grid; place-items: center; }
+.nc-logo img { width: 40%; height: auto; }
+.nc-text { padding: 16px 18px 18px; display: flex; flex-direction: column; flex: 1; }
+.nc-text h3 { margin: 4px 0 8px; font-size: 22px; line-height: 1.1; overflow-wrap: anywhere; }
+.nc-text p { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
+.nc-text .more { margin-top: auto; color: var(--red); }
+.nc-meta, .nc-text .nc-meta { font: 800 12px/1.2 var(--text); letter-spacing: 1.5px; text-transform: uppercase; color: var(--red); margin: 0; }
+.article { padding-top: 40px; }
+.article h1 { font-size: clamp(34px, 8vw, 60px); line-height: 1; margin: 6px 0 10px; overflow-wrap: anywhere; }
+.article .eyebrow a { color: inherit; text-decoration: none; }
+.article .lead { margin: 18px 0; color: var(--ink); }
+.art-img { margin: 24px 0; }
+.art-img img { width: 100%; height: auto; border-radius: 4px; display: block; }
+.art-game { margin: 24px 0; }
+.art-body p { font-size: 17px; line-height: 1.7; margin: 0 0 18px; }
+@media (prefers-reduced-motion: reduce) { .news-card:hover { transform: none; } }
+
 /* Einblenden beim Scrollen (nur mit JavaScript, ohne Bewegung bei reduzierter Bewegung) */
 .js .reveal { opacity: 0; transform: translateY(26px); transition: opacity .7s ease, transform .7s ease; }
 .js .reveal.in { opacity: 1; transform: none; }
@@ -308,6 +332,7 @@ p { margin: 0 0 1em; }
   .insta a:nth-child(n+4) { display: block; }
   .split-info { grid-template-columns: 1fr 1fr; }
   .teams { grid-template-columns: 1fr 1fr; }
+  .news-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .team-card { min-height: 420px; }
   .foot-grid { grid-template-columns: repeat(2, 1fr); }
 }
@@ -330,6 +355,7 @@ p { margin: 0 0 1em; }
   .games-band { padding: 64px 0; }
   .split { grid-template-columns: 1fr 1fr; gap: 56px; }
   .games { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .news-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .people { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .coaches { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .logos { grid-template-columns: repeat(4, minmax(0, 1fr)); }

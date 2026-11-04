@@ -26,9 +26,12 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
   Livestream: `games.stream_url`, öffentlich nur als geprüfter https-Link (`public_games` -> `stream`).
   Livescore auf der Startseite: `next_game_card(..., live=True)` (nur Herren) baut leere Plätze, `site.js` liest `/public/live` alle 5 Sekunden
   (nur sichtbarer Tab, nur `textContent`, Reihenfolge nach den Logos der Karte, nur passendes Spiel per `data-game`), Hub-Adresse `HUB_URL` in site.js (leer = gleiche Adresse).
+  News: Tabelle `articles` (Bereich Medien, Hub-Seite `#/news`), öffentlich nur über `public_articles` (Status „Veröffentlicht“, Datum erreicht, ohne `notes`).
+  Seiten `/news` (`page_news`) und `/news/<id>-<titel>` (`page_article`, falsche Schreibweise per 301 auf `article_slug`), die 3 neuesten im Startseiten-Abschnitt `news`.
+  Text nur als Absätze über `paragraphs()` (kein HTML aus dem Hub). Neue Startseiten-Abschnitte setzt `web_layout` an ihren Standardplatz.
   Mannschaften: `TEAMS` (Herren, Next Generation) in server.py, website.py und pages.js gleich halten. `players.team`, `games.team`.
   Spieler der Next Generation (Minderjährige) gibt `public_team` nie aus, nur deren Coaches und Staff.
-  Seiten: Start (mit Training und Probetraining), Herren (oben Infoblöcke mit Training und `next_game_card`, Kader nach Offense/Defense mit `player_card`: Foto nur mit Einwilligung, Position unter dem Namen; dann Coaches mit `coach_card`), Jugend, Spielplan, Sponsoren, Kontakt.
+  Seiten: Start (mit Training, Probetraining und den 3 neuesten News), Herren (oben Infoblöcke mit Training und `next_game_card`, Kader nach Offense/Defense mit `player_card`: Foto nur mit Einwilligung, Position unter dem Namen; dann Coaches mit `coach_card`), Jugend, Spielplan, Sponsoren, Kontakt.
   Kontaktformular mit Anliegen `CONTACT_TOPICS` (server.py und website.py gleich halten), Vorauswahl per `/kontakt?anliegen=herren|jugend|sponsoring|frage`.
   Standardtexte `site_*` in `DEFAULT_SETTINGS`; neue Texte für bestehende Server: `SITE_TEXTS_VERSION` erhöhen (füllt nur leere Felder).
   Webseite im Hub (`#/website`, Bereich Medien: Lesen 1, Ändern 2): `/api/website` (GET Übersicht mit Checkliste, PUT `texts` nur `site_*` und `layout`),
@@ -57,7 +60,7 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
 
 ## Sicherheit (nicht aufweichen)
 
-- Ohne Sitzung erreichbar: die Webseite (`/`, `/herren`, `/jugend`, `/spielplan`, `/sponsoren`, `/kontakt`, `/supporter-karte` (auch POST), `/impressum`, `/datenschutz`, alte Adressen `/team`, `/next-generation`, `/probetraining` als 301 in `website.REDIRECTS`, `/web/assets/...`, `/web/insta/...`, `/web/site/...`, `/sitemap.xml`, `/robots.txt`, `/api/public/...`, `POST /kontakt`),
+- Ohne Sitzung erreichbar: die Webseite (`/`, `/herren`, `/jugend`, `/spielplan`, `/news`, `/news/<artikel>`, `/sponsoren`, `/kontakt`, `/supporter-karte` (auch POST), `/impressum`, `/datenschutz`, alte Adressen `/team`, `/next-generation`, `/probetraining` als 301 in `website.REDIRECTS`, `/web/assets/...`, `/web/insta/...`, `/web/site/...`, `/sitemap.xml`, `/robots.txt`, `/api/public/...`, `POST /kontakt`),
   Livescore `/public/live`, `/public/next-game`, `/live/push` und `/live/games` (nur mit Token; `/spielstand` nur mit Sitzung),
   `/login`, `/setup`, `/invite`, `/passwort-vergessen`, `/passwort-neu`, `/healthz`, `/bestellen`, `/teilen`, `/manifest.webmanifest`, `/sw.js`, `style.css`, `logo.png`, `icon.png`, `icon-192.png`, `icon-512.png`.
   Alles unter `/hub`, `/static`, `/media` und `/api` (außer `/api/public`) braucht eine Sitzung.

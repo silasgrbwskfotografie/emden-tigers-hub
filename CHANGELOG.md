@@ -1,6 +1,10 @@
 # Änderungen
 
 ## 4.1 (02.11.2026)
+- News auf der Webseite: Übersicht unter /news, jeder Artikel mit eigener Adresse (/news/<nummer>-<titel>), im Menü und Footer;
+  die 3 neuesten Artikel auf der Startseite (Abschnitt „News“, im Hub sortier- und ausblendbar)
+  - Im Hub unter Medien > News: Überschrift, Datum, Entwurf oder Veröffentlicht, Vorspann, Text, Foto mit Bildbeschreibung, optional Mannschaft und Spiel (zeigt Paarung und Ergebnis)
+  - Sichtbar erst ab dem Datum und nur als „Veröffentlicht“, interne Notizen nie öffentlich; Artikel in der Sitemap und als NewsArticle für Google
 - Livescore auf der Startseite: Die Herren-Karte unter „Nächste Spiele“ zeigt während des Spiels den Spielstand statt „VS“,
   mit LIVE, Viertel oder Halbzeit und Down & Distance; danach etwa 2 Stunden „Endstand“. Aktualisiert sich alle 5 Sekunden, nur solange die Seite sichtbar ist
 - Livescore für die Webseite: Highlight Desk meldet den Spielstand an den Hub, die Webseite liest ihn öffentlich

@@ -612,6 +612,48 @@ App.pages.games = async (view) => {
   draw();
 };
 
+/* ====================================================================== */
+/* News (Artikel auf der Webseite unter /news, die 3 neuesten auf der Startseite) */
+const ARTICLE_STATUS = ['Entwurf', 'Veröffentlicht'];
+F.articles = () => [
+  { key: 'title', label: 'Überschrift', full: true, placeholder: 'z. B. Tigers gewinnen das Heimspiel gegen Delmenhorst' },
+  { key: 'date', label: 'Datum', type: 'date', default: todayStr(), hint: 'Erst ab diesem Tag auf der Webseite sichtbar.' },
+  { key: 'status', label: 'Status', type: 'select', options: ARTICLE_STATUS, default: 'Entwurf', hint: 'Nur „Veröffentlicht“ erscheint auf der Webseite.' },
+  { key: 'team', label: 'Mannschaft (optional)', type: 'select', options: ['', ...TEAMS] },
+  { key: 'game_id', label: 'Spiel (optional)', type: 'ref', ref: { table: 'games', label: gameLabel }, hint: 'Zeigt Paarung und Ergebnis im Artikel, z. B. für Spielberichte.' },
+  { key: 'teaser', label: 'Vorspann', type: 'textarea', rows: 2, placeholder: 'Ein bis zwei Sätze für die Übersicht und die Startseite' },
+  { key: 'body', label: 'Text', type: 'textarea', rows: 14, hint: 'Leerzeile = neuer Absatz. Bitte keine Namen von Kindern und Jugendlichen.' },
+  { key: 'image', label: 'Foto', type: 'image', full: true, hint: 'Ohne Foto zeigt die Webseite das Tiger-Logo.' },
+  { key: 'image_alt', label: 'Bildbeschreibung', full: true, placeholder: 'z. B. Runningback mit dem Ball im Heimspiel', hint: 'Für Screenreader und Google.' },
+  { key: 'notes', label: 'Interne Notizen (nicht öffentlich)', type: 'textarea', rows: 2 },
+];
+const articleSlug = a => `${a.id}-` + ((a.title || '').toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60).replace(/-+$/, '') || 'artikel');
+
+App.pages.news = async (view) => {
+  const list = [...await load('articles', true)].sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id - a.id);
+  await loadAll('games', 'opponents');
+  const today = todayStr();
+  const state = a => a.status !== 'Veröffentlicht' ? ['Entwurf', ''] : (a.date || '') > today ? ['Geplant ab ' + fmtDate(a.date), 'warn'] : ['Online', 'ok'];
+  const online = list.filter(a => state(a)[0] === 'Online');
+  view.innerHTML = `
+    <div class="page-head"><h1>News<small>${online.length} online, die 3 neuesten auf der Startseite</small></h1>
+      <div class="btn-row"><a class="btn keep" href="/news" target="_blank" rel="noopener">Auf der Webseite ansehen</a><button class="pp btn primary" id="nw_new">+ Artikel</button></div></div>
+    <div class="table-wrap"><table><thead><tr><th>Datum</th><th></th><th>Überschrift</th><th>Status</th><th>Mannschaft</th><th></th></tr></thead><tbody>
+    ${list.map(a => { const [st, cls] = state(a); return `<tr>
+      <td style="white-space:nowrap"><b>${fmtDate(a.date) || '<span class="muted">ohne Datum</span>'}</b></td>
+      <td>${a.image ? `<img class="thumb" src="${esc(a.image)}" alt="">` : '<div class="thumb"></div>'}</td>
+      <td><b>${esc(a.title || '(ohne Überschrift)')}</b>${a.teaser ? `<div class="muted small">${esc(a.teaser.slice(0, 120))}</div>` : ''}${online.slice(0, 3).includes(a) ? '<div><span class="badge red">Startseite</span></div>' : ''}</td>
+      <td><span class="badge ${cls}">${esc(st)}</span></td>
+      <td>${esc(a.team || '')}</td>
+      <td class="actions">${st === 'Online' ? `<a class="btn sm keep" href="/news/${esc(articleSlug(a))}" target="_blank" rel="noopener">Ansehen</a> ` : ''}<button class="btn sm ghost keep" data-e="${a.id}">${App.readOnly ? 'Ansehen' : 'Bearbeiten'}</button></td>
+    </tr>`; }).join('') || '<tr><td colspan="6" class="empty">Noch keine Artikel. Lege oben den ersten an.</td></tr>'}
+    </tbody></table></div>`;
+  const edit = async rec => { const r = await editRecord('articles', F.articles(), rec, { newTitle: 'Neuer Artikel', editTitle: 'Artikel bearbeiten' }); if (r) route(); };
+  if ($('#nw_new')) $('#nw_new').onclick = () => edit({ status: 'Entwurf', date: todayStr() });
+  $$('[data-e]').forEach(b => b.onclick = () => edit(byId(list, b.dataset.e)));
+};
+
 async function resetGame(id) {
   const g = byId(App.cache.games, id) || {};
   const o = byId(App.cache.opponents, g.opponent_id) || {};
