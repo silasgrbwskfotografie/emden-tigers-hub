@@ -304,7 +304,8 @@ TABLES = {
     "articles": {                               # News auf der Webseite (/news), im Hub unter Medien > News
         "title": "TEXT",
         "teaser": "TEXT",                          # kurzer Vorspann für Liste und Startseite
-        "body": "TEXT",                            # Text, Absätze durch Leerzeilen
+        "body": "TEXT",                            # Text, Absätze durch Leerzeilen (oder HTML, siehe format)
+        "format": "TEXT DEFAULT 'Text'",           # Text / HTML (HTML wird beim Anzeigen gefiltert: website.clean_html)
         "image": "TEXT",                           # Foto aus der Mediathek (/media/...)
         "image_alt": "TEXT",
         "date": "TEXT",                            # Veröffentlichungsdatum, vorher nicht sichtbar
@@ -1060,6 +1061,7 @@ def public_articles():
         rows = conn.execute("SELECT * FROM articles WHERE status='Veröffentlicht' AND IFNULL(date,'') != '' AND date <= ? "
                             "AND IFNULL(title,'') != '' ORDER BY date DESC, id DESC", (today,)).fetchall()
     return [{"id": a["id"], "slug": article_slug(a), "title": a["title"], "teaser": a["teaser"] or "", "body": a["body"] or "",
+             "format": "HTML" if a["format"] == "HTML" else "Text",
              "date": a["date"], "image": public_image(a["image"], key), "image_alt": a["image_alt"] or "",
              "team": a["team"] if a["team"] in TEAMS else "", "game_id": a["game_id"] or None} for a in rows]
 

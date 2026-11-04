@@ -8,7 +8,8 @@ import json
 import re
 import threading
 from datetime import date, datetime
-from html import escape
+from html import escape, unescape
+from html.parser import HTMLParser
 from pathlib import Path
 
 WEB = Path(__file__).resolve().parent / "web"
@@ -56,8 +57,8 @@ IMAGE_SLOTS = {
 START_SECTIONS = {
     "wer": "Wer wir sind",
     "karten": "Nächste Spiele (Herren und Jugend) und Training",
-    "news": "News (die 3 neuesten Artikel)",
     "teams": "Unsere Teams (Herren und Jugend)",
+    "news": "News (die 3 neuesten Artikel)",
     "ergebnisse": "Zuletzt gespielt",
     "band": "Rotes Band „Lust auf Football?“",
     "sponsoren": "Unsere Sponsoren",
@@ -383,22 +384,23 @@ def page_start(info, games, team, sponsors, insta, layout_order=None, articles=(
       <a class="btn red train-btn" href="/kontakt#formular">Probetraining anfragen</a></div>
   </div>
 </div></section>"""
-    sec["wer"] = f"""<section class="split wrap reveal">
+    # Abschnitte in wechselnden Farben (tone white / dark, sonst Seitengrau), damit die Startseite nicht eintönig wirkt
+    sec["wer"] = f"""<section class="tone white"><div class="split wrap reveal">
   <div class="split-img">{picture("team", "(min-width: 900px) 50vw, 100vw", meta=meta)}</div>
   <div class="split-text"><p class="eyebrow">Wer wir sind</p><h2>{e(info.get("club_name") or "Emden Tigers")}</h2>
     <p>{text_or_ph(info.get("site_about"), "Vereinsvorstellung (ein bis zwei Absätze)")}</p>
     <a class="btn dark" href="/herren">Zum Kader</a></div>
-</section>"""
-    sec["teams"] = f"""<section class="wrap reveal">{section_head("Mannschaften", "Unsere Teams")}
+</div></section>"""
+    sec["teams"] = f"""<section class="tone dark"><div class="wrap reveal">{section_head("Mannschaften", "Unsere Teams")}
   <div class="teams">
     <a class="team-card" href="/herren">{picture("spiel", "(min-width: 700px) 50vw, 100vw", meta=meta)}
       <div><p class="eyebrow light">Tackle Football</p><h3>Herren</h3><p>Unser Tackle-Football-Team: volle Ausrüstung, volle Leidenschaft.</p><span class="more">Kader und Coaches</span></div></a>
     <a class="team-card youth" href="/jugend"><div class="team-logo"><img src="/static/logo.png" alt="" width="444" height="276" loading="lazy"></div>
       <div><p class="eyebrow light">Flag Football</p><h3>Next Generation</h3><p>Unsere Jugend: kontaktloser Football für Kinder und Jugendliche.</p><span class="more">Zur Jugend</span></div></a>
   </div>
-</section>"""
-    sec["news"] = (f'''<section class="wrap reveal">{section_head("Aktuelles", "News", '<a class="more" href="/news">Alle News</a>')}
-  <div class="news-grid">{"".join(news_card(a) for a in articles[:3])}</div></section>''' if articles else '')
+</div></section>"""
+    sec["news"] = (f'''<section class="tone white"><div class="wrap reveal">{section_head("Aktuelles", "News", '<a class="more" href="/news">Alle News</a>')}
+  <div class="news-grid">{"".join(news_card(a) for a in articles[:3])}</div></div></section>''' if articles else '')
     sec["ergebnisse"] = (f'''<section class="wrap reveal">{section_head("Ergebnisse", "Zuletzt gespielt", '<a class="more" href="/spielplan">Ganzer Spielplan</a>')}
   <div class="games">{"".join(game_card(g, info) for g in played)}</div></section>''' if played else '')
     sec["band"] = """<section class="band reveal">
@@ -408,10 +410,10 @@ def page_start(info, games, team, sponsors, insta, layout_order=None, articles=(
 </section>"""
     sec["sponsoren"] = (f'''<section class="wrap reveal">{section_head("Partner", "Unsere Sponsoren", '<a class="more" href="/sponsoren">Alle Sponsoren</a>')}
   <div class="logos">{"".join(sponsor_tile(s) for s in sponsors[:8])}</div></section>''' if sponsors else '')
-    sec["instagram"] = f"""<section class="wrap reveal">{section_head("Instagram", "@" + ig)}
+    sec["instagram"] = f"""<section class="tone dark"><div class="wrap reveal">{section_head("Instagram", "@" + ig)}
   <div class="insta">{"".join(tiles[:6]) or placeholder("Fotos für das Raster")}</div>
-  <p class="center"><a class="btn dark" href="https://www.instagram.com/{ig}/" target="_blank" rel="noopener">Folge uns auf Instagram</a></p>
-</section>"""
+  <p class="center"><a class="btn red" href="https://www.instagram.com/{ig}/" target="_blank" rel="noopener">Folge uns auf Instagram</a></p>
+</div></section>"""
     body = hero + "\n".join(sec[k] for k in order)
     return layout("", "", "Die Emden Tigers sind die American-Football-Sparte des SV Amisia Stern Wolthusen in Emden. Training, Herren, Jugend, Spielplan und Sponsoren.", body, info)
 
@@ -682,6 +684,75 @@ PAGES = ("", "herren", "jugend", "spielplan", "news", "sponsoren", "kontakt", "s
 # ---------------------------------------------------------------------------
 # News: Liste, Einzelartikel, Karten für die Startseite
 # ---------------------------------------------------------------------------
+class _HtmlFilter(HTMLParser):
+    """Lässt nur einfache Textauszeichnung durch (Absätze, Überschriften, Listen, Fett, Kursiv, Links, Zitate).
+    Skripte, Styles, Einbettungen, Bilder, Formulare und alle Attribute außer einem geprüften href fallen weg."""
+    ALLOWED = {"p", "br", "strong", "b", "em", "i", "u", "h2", "h3", "h4", "ul", "ol", "li", "a", "blockquote", "hr"}
+    VOID = {"br", "hr"}
+    DROP = {"script", "style", "iframe", "object", "embed", "template", "svg", "math", "noscript", "textarea", "select", "title", "head"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.out, self.stack, self.skip = [], [], 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.DROP:
+            self.skip += 1
+            return
+        if self.skip or tag not in self.ALLOWED:
+            return
+        if tag in self.VOID:
+            self.out.append(f"<{tag}>")
+            return
+        extra = ""
+        if tag == "a":
+            href = re.sub(r"[\x00-\x20]", "", dict(attrs).get("href") or "")
+            if re.match(r"(https?://|mailto:|/(?!/)|#)", href, re.I):
+                ext = href.lower().startswith(("http://", "https://"))
+                extra = f' href="{e(href)}"' + (' target="_blank" rel="noopener"' if ext else "")
+        self.out.append(f"<{tag}{extra}>")
+        self.stack.append(tag)
+
+    def handle_startendtag(self, tag, attrs):
+        if tag in self.VOID and not self.skip:
+            self.out.append(f"<{tag}>")
+
+    def handle_endtag(self, tag):
+        if tag in self.DROP:
+            self.skip = max(0, self.skip - 1)
+            return
+        if self.skip or tag not in self.stack:
+            return
+        while self.stack:   # offene Tags bis zu diesem schließen, damit nichts aus dem Artikel herausragt
+            t = self.stack.pop()
+            self.out.append(f"</{t}>")
+            if t == tag:
+                break
+
+    def handle_data(self, data):
+        if not self.skip:
+            self.out.append(e(data))
+
+    def result(self):
+        self.close()
+        return "".join(self.out) + "".join(f"</{t}>" for t in reversed(self.stack))
+
+
+def clean_html(t):
+    """HTML aus dem Hub für die Webseite: nur erlaubte Tags, alles andere als Text oder entfernt."""
+    f = _HtmlFilter()
+    f.feed(str(t or ""))
+    return f.result()
+
+
+def plain_text(t, fmt="Text"):
+    """Reiner Text (für Vorspann, Beschreibung bei Google): bei HTML ohne Tags."""
+    if fmt != "HTML":
+        return str(t or "")
+    inline = re.sub(r"</?(strong|b|em|i|u|a)\b[^>]*>", "", clean_html(t))   # Fett, Kursiv, Links ohne Leerzeichen entfernen
+    return re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]*>", " ", inline))).strip()
+
+
 def paragraphs(t):
     """Text aus dem Hub als Absätze: Leerzeile = neuer Absatz, einfacher Umbruch bleibt erhalten. Kein HTML."""
     blocks = [b.strip() for b in re.split(r"\n\s*\n", str(t or "").replace("\r", "")) if b.strip()]
@@ -691,7 +762,7 @@ def paragraphs(t):
 def news_card(a):
     img = (f'<img src="{e(a["image"])}" alt="{e(a["image_alt"])}" loading="lazy" decoding="async">' if a["image"]
            else '<div class="nc-logo"><img src="/static/logo.png" alt="" loading="lazy"></div>')
-    teaser = a["teaser"] or (a["body"].strip().split("\n")[0][:180] if a["body"] else "")
+    teaser = a["teaser"] or (plain_text(a["body"], a.get("format")).strip().split("\n")[0][:180] if a["body"] else "")
     return (f'<a class="news-card" href="/news/{e(a["slug"])}"><div class="nc-img">{img}</div><div class="nc-text">'
             f'<p class="nc-meta">{e(fmt_date(a["date"]))}{f" · {e(a["team"])}" if a["team"] else ""}</p>'
             f'<h3>{e(a["title"])}</h3>{f"<p>{e(teaser)}</p>" if teaser else ""}<span class="more">Weiterlesen</span></div></a>')
@@ -713,7 +784,7 @@ def page_article(info, a, games):
   {f'<p class="lead">{e(a["teaser"])}</p>' if a["teaser"] else ""}
   {img}
   {f'<div class="art-game">{game_card(g, info)}</div>' if g else ""}
-  <div class="art-body">{paragraphs(a["body"])}</div>
+  <div class="art-body">{clean_html(a["body"]) if a.get("format") == "HTML" else paragraphs(a["body"])}</div>
   <p><a class="more" href="/news">Alle News</a></p>
 </article>"""
     base = getattr(_ctx, "base", "")
@@ -723,7 +794,7 @@ def page_article(info, a, games):
               "url": f"{base}/news/{a['slug']}", "publisher": {"@type": "SportsTeam", "name": info.get("club_name") or "Emden Tigers", "logo": base + "/static/logo.png"},
               "image": [base + (a["image"] or "/static/logo.png")]}
         head = f'<link rel="canonical" href="{e(base)}/news/{e(a["slug"])}">' + jsonld(ld)
-    desc = a["teaser"] or (a["body"] or "").strip().split("\n")[0][:160]
+    desc = a["teaser"] or plain_text(a["body"], a.get("format")).strip().split("\n")[0][:160]
     return layout("news", a["title"], desc, body, info, extra_head=head)
 
 
