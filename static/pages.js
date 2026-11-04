@@ -623,7 +623,7 @@ F.articles = () => [
   { key: 'game_id', label: 'Spiel (optional)', type: 'ref', ref: { table: 'games', label: gameLabel }, hint: 'Zeigt Paarung und Ergebnis im Artikel, z. B. für Spielberichte.' },
   { key: 'teaser', label: 'Vorspann', type: 'textarea', rows: 2, placeholder: 'Ein bis zwei Sätze für die Übersicht und die Startseite' },
   { key: 'body', label: 'Text', type: 'textarea', rows: 14, hint: 'Leerzeile = neuer Absatz. Bitte keine Namen von Kindern und Jugendlichen.' },
-  { key: 'image', label: 'Foto', type: 'image', full: true, hint: 'Ohne Foto zeigt die Webseite das Tiger-Logo.' },
+  { key: 'image', label: 'Foto', type: 'image', full: true, hint: 'Am besten im Instagram-Hochformat 4:5 (1080 x 1350), so wird es ohne Beschnitt gezeigt. Ohne Foto zeigt die Webseite das Tiger-Logo.' },
   { key: 'image_alt', label: 'Bildbeschreibung', full: true, placeholder: 'z. B. Runningback mit dem Ball im Heimspiel', hint: 'Für Screenreader und Google.' },
   { key: 'notes', label: 'Interne Notizen (nicht öffentlich)', type: 'textarea', rows: 2 },
 ];

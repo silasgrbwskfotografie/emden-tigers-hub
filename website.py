@@ -279,9 +279,9 @@ def game_card(g, info, big=False, live=False):
       <div class="g-date"><b>{e(fmt_date(g['date'], True))}</b>{f'<span>{e(g["time"])} Uhr</span>' if g['time'] else ''}</div>
       {'<div class="live-chips" hidden><span class="chip live" data-l="state">Live</span><span class="chip" data-l="period" hidden></span><span class="chip dim" data-l="down" hidden></span><span class="chip stale" data-l="stale" hidden>Live Ticker pausiert</span></div>' if live else ''}
       <div class="g-teams">{teams}</div>
-      <div class="g-meta">{f'<span class="tag team">{e(g["team"])}</span>' if g.get("team", "Herren") != "Herren" else ''}<span class="tag">{'Heimspiel' if home else 'Auswärts'}</span>{f'<span>{e(g["league"] or g["kind"])}</span>' if (g["league"] or g["kind"]) else ''}
-        {f'<span>{e(g["location"])}</span>' if g['location'] else ''}</div>{result}
-      {f'<a class="stream" href="{e(g["stream"])}" target="_blank" rel="noopener">Livestream</a>' if g.get("stream") and g["score_us"] is None else ''}</article>"""
+      <div class="g-row"><div class="g-meta">{f'<span class="tag team">{e(g["team"])}</span>' if g.get("team", "Herren") != "Herren" else ''}<span class="tag">{'Heimspiel' if home else 'Auswärts'}</span>{f'<span>{e(g["league"] or g["kind"])}</span>' if (g["league"] or g["kind"]) else ''}
+        {f'<span>{e(g["location"])}</span>' if g['location'] else ''}</div>
+      {f'<a class="stream" href="{e(g["stream"])}" target="_blank" rel="noopener">Livestream</a>' if g.get("stream") and g["score_us"] is None else ''}</div>{result}</article>"""
 
 
 def roster(players):
@@ -309,12 +309,26 @@ def home_maps_url(info):
     return f"https://www.openstreetmap.org/search?query={q}" if q else ""
 
 
+def training_card(times, place, address, sport, ph):
+    """Trainingskarte der Mannschaftsseiten: jede Zeile aus dem Hub als Termin (Tag fett, Uhrzeit daneben), darunter Ort mit Karte."""
+    rows = []
+    for line in str(times or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        m = re.match(r"(Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag|Sonntag)s?\b[,:]?\s*(.*)", line)
+        day, rest = (m.group(1), m.group(2)) if m else ("", line)
+        rows.append(f'<li><b>{e(day)}</b><span>{e(rest)}</span></li>' if day else f'<li class="wide"><span>{e(rest)}</span></li>')
+    when = f'<ul class="tr-times">{"".join(rows)}</ul>' if rows else f"<p>{placeholder(ph + ': Trainingszeiten')}</p>"
+    q = address or place
+    where = (f'<p class="tr-where"><b>{e(place) if place else placeholder(ph + ": Trainingsort")}</b>{"<br>" + e(address) if address else ""}</p>'
+             + (f'<a class="more" href="https://www.openstreetmap.org/search?query={e(q)}" target="_blank" rel="noopener">Anfahrt auf der Karte</a>' if q else ""))
+    return f"""<div class="card tr-card"><p class="eyebrow">Training {e(sport)}</p><h3>Trainingszeiten</h3>{when}
+    <div class="tr-place"><p class="eyebrow">Trainingsort</p>{where}</div></div>"""
+
+
 def youth_training_card(info):
-    place = info.get("site_youth_training_place")
-    return f"""<div class="card"><p class="eyebrow">Training Jugend</p><h3>Flag Football</h3>
-    <p class="big-lines">{text_or_ph(info.get("site_youth_training_times"), "Trainingszeiten Next Generation")}</p>
-    <p>{text_or_ph(place, "Trainingsort Next Generation")}</p>
-    {f'<a class="more" href="https://www.openstreetmap.org/search?query={e(place)}" target="_blank" rel="noopener">Anfahrt auf der Karte</a>' if place else ''}</div>"""
+    return training_card(info.get("site_youth_training_times"), info.get("site_youth_training_place"), "", "Flag Football", "Next Generation")
 
 
 def team_games(info, games, team, title="Nächste Spiele", skip=0):
@@ -408,16 +422,17 @@ def next_game_card(info, games, team, label="Nächstes Spiel", live=False):
     """Schwarze Karte „Nächstes Spiel“ einer Mannschaft mit Countdown, Spieltagssponsor und Livestream.
     live: Platz für den Livescore (site.js liest /public/live und blendet Spielstand, Chips und Punkte ein)."""
     ng = next_game([g for g in games if g.get("team", "Herren") == team])
-    if not ng:
-        return (f'<div class="card next"><p class="eyebrow">{e(label)}</p><h3>Termine folgen</h3>'
-                f'<p>Der nächste Termin steht hier, sobald er feststeht.</p></div>')
+    if not ng:   # ohne Termin nur eine schmale Zeile
+        return (f'<div class="card next none"><p class="eyebrow">{e(label)}</p>'
+                f'<p class="ng-none"><b>Termine folgen</b><span>Der nächste Termin steht hier, sobald er feststeht.</span></p></div>')
     days = (date.fromisoformat(ng["date"]) - date.today()).days
     when = "<b>Heute</b> ist Gameday" if days == 0 else f"<b>{days}</b>{' Tag' if days == 1 else ' Tage'} bis zum Kickoff"
     extra = f'<p class="g-sponsor">Spieltag präsentiert von {e(ng["sponsor"])}</p>' if ng.get("sponsor") else ""
+    foot = f'<div class="g-foot"><p class="countdown">{when}</p>{extra}</div>'
     if live:
         return (f'<div class="card next" data-live data-game="{ng.get("id") or ""}" data-home="{1 if ng["home"] else 0}">'
-                f'<p class="eyebrow">{e(label)}</p>{game_card(ng, info, big=True, live=True)}<p class="countdown">{when}</p>{extra}</div>')
-    return f'<div class="card next"><p class="eyebrow">{e(label)}</p>{game_card(ng, info, big=True)}<p class="countdown">{when}</p>{extra}</div>'
+                f'<p class="eyebrow">{e(label)}</p>{game_card(ng, info, big=True, live=True)}{foot}</div>')
+    return f'<div class="card next"><p class="eyebrow">{e(label)}</p>{game_card(ng, info, big=True)}{foot}</div>'
 
 
 def coach_card(p):
@@ -432,11 +447,8 @@ def page_herren(info, team, games):
     players = [p for p in team if p["kind"] == "Spieler" and p.get("team", "Herren") == "Herren"]
     coaches = coaches_of(team, "Herren")
     units = roster(players)
-    count = {u: len(ps) for u, ps in units}
     kader = "".join(f'<h3 class="unit">{e(u)}</h3><div class="people">' + "".join(player_card(p) for p in ps) + "</div>" for u, ps in units)
     addr = info.get("site_training_address")
-    team_line = " und ".join(x for x in (f"{count.get('Offense', 0)} Offense" if count.get("Offense") else "",
-                                           f"{count.get('Defense', 0)} Defense" if count.get("Defense") else "") if x)
     body = f"""<section class="page-hero team-hero">{picture("team", "100vw", "hero-img", eager=True)}<div class="hero-text"><p class="eyebrow light">Tackle Football</p><h1>Herren</h1>
   <p class="lead">Volle Ausrüstung, volle Leidenschaft: unser Team für echten American Football.</p>
   <div class="btns"><a class="btn red" href="/kontakt?anliegen=herren#formular">Probetraining anfragen</a><a class="btn ghost" href="/spielplan#herren">Spielplan</a></div></div></section>
@@ -444,18 +456,12 @@ def page_herren(info, team, games):
   <div class="split-text"><p class="eyebrow">Unser Team</p><h2>Die Herren der Tigers</h2>
     <p>Hinter jedem Spielzug steckt ein ganzes Team. Bei den Herren spielen Footballer aus Emden und ganz Ostfriesland Tackle Football mit voller Ausrüstung.
     Manche spielen seit Jahren Football, andere haben erst bei uns angefangen. Neue Spieler sind jederzeit willkommen: Komm einfach zum Probetraining.</p></div>
-  <div class="facts">
-    <div><b>Training</b><span>{lines(info.get("site_training_times")) if (info.get("site_training_times") or "").strip() else placeholder("Trainingszeiten")}</span></div>
-    <div><b>Trainingsort</b><span>{text_or_ph(info.get("site_training_place"), "Trainingsort")}{"<br>" + e(addr) if addr else ""}</span></div>
-    <div><b>Kader</b><span>{f"{len(players)} Spieler" + (f", davon {team_line}" if team_line else "") if players else "wird bald vorgestellt"}<br>{len(coaches)} {"Coach" if len(coaches) == 1 else "Coaches"}</span></div>
-    <div><b>Heimspiele</b><span>{e(info.get("home_location")) or placeholder("Heimspielort")}{f"<br>Eintritt {e(info.get('entry_fee'))} €" if info.get("entry_fee") else ""}</span></div>
-  </div>
+  {training_card(info.get("site_training_times"), info.get("site_training_place"), addr, "Tackle Football", "Herren")}
 </section>
 <section class="wrap split-info top-info">
   {next_game_card(info, games, "Herren")}
   <div class="card"><p class="eyebrow">Probetraining</p><h3>Werde Teil der Tigers</h3>
     <p>{text_or_ph(info.get("site_trial_text"), "Hinweise zum Probetraining")}</p>
-    {f'<a class="more" href="https://www.openstreetmap.org/search?query={e(addr)}" target="_blank" rel="noopener">Anfahrt zum Training</a><br>' if addr else ''}
     <a class="btn red" href="/kontakt?anliegen=herren#formular" style="margin-top:12px">Probetraining anfragen</a></div>
 </section>
 <section class="wrap" id="coaches">{section_head("Coaching Staff", "Coaches")}
@@ -554,22 +560,33 @@ def page_jugend(info, team, games):
     body = f"""<section class="page-hero youth-hero"><div class="hero-text"><p class="eyebrow light">Jugend der Emden Tigers</p><h1>Next Generation</h1>
   <p class="lead">Flag Football ohne Tackling: schnell, fair und mit ganz viel Spaß.</p>
   <div class="btns"><a class="btn red" href="/kontakt?anliegen=jugend#formular">Probetraining anfragen</a></div></div></section>
-<section class="split wrap reveal">
-  <div class="split-text"><p class="eyebrow">Flag Football</p><h2>Was ist Flag Football?</h2>
-    <p>{text_or_ph(info.get("site_youth_text"), "Vorstellung Flag Football und Next Generation")}</p></div>
-  <div class="facts">
-    <div><b>Kontaktlos</b><span>Fähnchen ziehen statt tackeln</span></div>
+<section class="split wrap reveal team-intro" id="training">
+  <div class="split-text"><p class="eyebrow">Unser Team</p><h2>Die Next Generation</h2>
+    <p>Die Next Generation ist die Jugend der Emden Tigers. Hier spielen Kinder und Jugendliche Flag Football, die kontaktlose Variante des American Football.
+    Vorkenntnisse braucht niemand, Mädchen und Jungen trainieren zusammen.{f" Alter: {e(ages)}." if ages else ""}</p>
+    <p>Ihr Kind möchte reinschnuppern? Schreiben Sie uns kurz über das Formular, wir melden uns mit allen Infos zum ersten Training.
+    Bitte Sportkleidung, Turnschuhe und etwas zu trinken mitbringen.</p>
+    <a class="btn red" href="/kontakt?anliegen=jugend#formular">Probetraining anfragen</a></div>
+  {youth_training_card(info)}
+</section>
+<section class="wrap flag" id="flag-football">{section_head("Flag Football", "Was ist Flag Football?")}
+  <div class="flag-grid">
+    <div class="flag-text">{paragraphs(info.get("site_youth_text")) or f"<p>{placeholder('Vorstellung Flag Football und Next Generation')}</p>"}</div>
+    <div class="card flag-rules"><p class="eyebrow">So funktioniert es</p><h3>Die Grundregeln</h3>
+      <ol>
+        <li><b>Punkte machen</b><span>Wie beim großen Football: Wer den Ball in die gegnerische Endzone trägt oder dort fängt, erzielt einen Touchdown.</span></li>
+        <li><b>Flagge statt Tackling</b><span>Alle tragen einen Gürtel mit Flaggen. Zieht ein Verteidiger dem Ballträger eine Flagge ab, ist der Spielzug vorbei.</span></li>
+        <li><b>Kein Körperkontakt</b><span>Tackeln, Blocken und Umstoßen sind verboten. Es zählen Schnelligkeit, gutes Werfen und Fangen und kluge Spielzüge.</span></li>
+        <li><b>Kleine Teams</b><span>Gespielt wird meist fünf gegen fünf auf einem kleineren Feld. So ist jeder ständig am Ball.</span></li>
+        <li><b>Jeder kann alles</b><span>Es gibt keine reinen Blocker. Alle dürfen laufen, werfen und fangen, das macht das Spiel abwechslungsreich.</span></li>
+      </ol></div>
+  </div>
+  <div class="facts flag-facts">
+    <div><b>Kontaktlos</b><span>Flagge ziehen statt tackeln</span></div>
     <div><b>Wenig Ausrüstung</b><span>Sportkleidung und Flaggengürtel</span></div>
     <div><b>Für alle</b><span>Mädchen und Jungen zusammen</span></div>
     <div><b>Alter</b><span>{e(ages) if ages else placeholder("Altersgruppen")}</span></div>
   </div>
-</section>
-<section class="wrap split-info" id="training">
-  {youth_training_card(info)}
-  <div class="card"><p class="eyebrow">Für Eltern</p><h3>Erst mal reinschnuppern</h3>
-    <p>Ihr Kind möchte Flag Football ausprobieren? Schreiben Sie uns kurz über das Formular, wir melden uns mit allen Infos zum ersten Training.
-    Bitte bringen Sie Sportkleidung, Turnschuhe und etwas zu trinken mit.</p>
-    <a class="more" href="/kontakt?anliegen=jugend#formular">Zum Kontaktformular</a></div>
 </section>
 <section class="wrap" id="coaches">{section_head("Coaching Staff", "Coaches")}
   {f'<div class="coaches">{"".join(coach_card(p) for p in coaches)}</div>' if coaches else '<p>Die Coaches der Next Generation werden bald hier vorgestellt.</p>'}

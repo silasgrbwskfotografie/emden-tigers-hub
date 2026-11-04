@@ -84,9 +84,9 @@ p { margin: 0 0 1em; }
 .card.next { background: var(--black); color: #fff; border-top-color: var(--red); }
 .countdown { margin: 10px 0 0; color: #bbb; }
 /* Startseite: nächste Spiele über die volle Breite */
-.games-band { background: #fff; padding: 48px 0; }
+.games-band { background: var(--bg); padding: 48px 0; }   /* gleicher Hintergrund wie der Rest der Seite */
 .games-band .wrap { padding: 0; }
-.next-games { display: grid; gap: 16px; }
+.next-games { display: grid; gap: 16px; align-content: start; }
 /* Startseite: links die Spiele untereinander, rechts das Training auf gleicher Höhe */
 .gameday { display: grid; gap: 16px; }
 .train-card { box-shadow: 0 6px 18px rgba(0,0,0,.06); display: flex; flex-direction: column; }
@@ -101,7 +101,7 @@ p { margin: 0 0 1em; }
 .tr-block p { margin: 0 0 4px; }
 .tr-team { font: 400 20px/1.1 var(--head); text-transform: uppercase; }
 .tr-team span { font: 800 11px/1 var(--text); letter-spacing: 2px; color: var(--red); margin-left: 6px; vertical-align: middle; }
-.countdown b { font: 400 42px/1 var(--head); color: var(--red); margin-right: 6px; }
+.countdown b { font: 400 30px/1 var(--head); color: var(--red); margin-right: 6px; }
 
 /* Bild und Text */
 .split { display: grid; gap: 28px; align-items: center; }
@@ -127,9 +127,20 @@ p { margin: 0 0 1em; }
 .t-logo i { font: 400 24px/1 var(--head); font-style: normal; color: #fff; }
 .team b { font: 400 clamp(18px, 4.5vw, 24px)/1.05 var(--head); text-transform: uppercase; }
 .vs { font: 400 22px/64px var(--head); color: var(--red); text-transform: uppercase; }
-.game.big .t-logo { width: 84px; height: 84px; background: #1d1d1d; }
-.game.big .team b { font-size: clamp(22px, 5vw, 30px); }
-.game.big .vs { line-height: 84px; font-size: 28px; }
+.game.big .t-logo { width: 64px; height: 64px; background: #1d1d1d; }
+.game.big .team b { font-size: clamp(18px, 4.2vw, 24px); }
+.game.big .vs { line-height: 64px; font-size: 24px; }
+.game.big .g-teams { margin: 10px 0; }
+/* Große Karte: Infos und Livestream in einer Zeile, Countdown und Spieltagssponsor darunter in einer Zeile */
+.game.big .g-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.game.big .stream { margin-top: 0; padding: 9px 12px; }
+.g-foot { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; margin-top: 12px; }
+.g-foot .countdown, .g-foot .g-sponsor { margin: 0; }
+.card.next { padding: 18px 20px; }
+.card.next.none { padding: 14px 20px; }
+.card.next.none .eyebrow { margin-bottom: 4px; }
+.ng-none { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; color: #bbb; font-size: 15px; }
+.ng-none b { font: 400 22px/1.1 var(--head); text-transform: uppercase; color: #fff; }
 .g-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 14px; color: var(--muted); }
 .game.big .g-meta { color: #bbb; }
 .tag { background: var(--red); color: #fff; font-weight: 800; padding: 1px 8px; border-radius: 3px; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
@@ -137,7 +148,7 @@ p { margin: 0 0 1em; }
 /* Livescore auf der Herren-Karte (site.js) */
 .card.next [hidden] { display: none !important; }
 .g-mid { display: grid; place-items: center; }
-.g-score { font: 400 clamp(44px, 13vw, 68px)/84px var(--head); color: #fff; white-space: nowrap; letter-spacing: 1px; }
+.g-score { font: 400 clamp(40px, 11vw, 60px)/64px var(--head); color: #fff; white-space: nowrap; letter-spacing: 1px; }
 .g-score i { font-style: normal; color: var(--red); margin: 0 .08em; }
 .g-score.flash { animation: score-flash 1.2s ease-out; }
 @keyframes score-flash { 0% { color: #ff4d57; transform: scale(1.08); } 100% { color: #fff; transform: none; } }
@@ -227,6 +238,28 @@ p { margin: 0 0 1em; }
 .youth-hero { min-height: 52svh; background: var(--red) linear-gradient(115deg, transparent 0 55%, rgba(0,0,0,.22) 55% 100%); }
 .youth-hero::before { display: none; }
 .youth-hero .btn.red { background: var(--black); }
+/* Jugend: Was ist Flag Football? Text links, Grundregeln rechts, darunter die Kurzinfos */
+.flag-grid { display: grid; gap: 24px; align-items: start; }
+.flag-text p { font-size: 17px; line-height: 1.7; margin: 0 0 16px; }
+.flag-rules ol { list-style: none; counter-reset: rule; margin: 0; padding: 0; display: grid; gap: 14px; }
+.flag-rules li { counter-increment: rule; display: grid; grid-template-columns: 34px 1fr; gap: 2px 12px; }
+.flag-rules li::before { content: counter(rule); grid-row: span 2; width: 34px; height: 34px; border-radius: 50%; background: var(--red); color: #fff;
+  display: grid; place-items: center; font: 400 18px/1 var(--head); }
+.flag-rules li b { font: 400 19px/1.1 var(--head); text-transform: uppercase; }
+.flag-rules li span { font-size: 15px; color: var(--muted); }
+.flag-facts { margin-top: 24px; }
+@media (min-width: 700px) { .flag-facts { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 960px) { .flag-grid { grid-template-columns: 1fr 1fr; gap: 40px; } }
+/* Trainingskarte der Mannschaftsseiten: Termine als Zeilen, darunter der Ort */
+.tr-card h3 { margin-bottom: 12px; }
+.tr-times { list-style: none; margin: 0 0 18px; padding: 0; display: grid; gap: 8px; }
+.tr-times li { display: flex; align-items: center; gap: 14px; background: var(--bg); border-left: 4px solid var(--red); border-radius: 3px; padding: 12px 14px; }
+.tr-times b { font: 400 22px/1 var(--head); text-transform: uppercase; min-width: 7.2em; }
+.tr-times span { font-weight: 700; font-size: 17px; }
+.tr-place { border-top: 1px solid var(--line); padding-top: 14px; }
+.tr-place .eyebrow { margin-bottom: 6px; }
+.tr-where { margin: 0 0 8px; }
+@media (max-width: 420px) { .tr-times li { flex-direction: column; align-items: flex-start; gap: 4px; } .tr-times b { min-width: 0; } }
 .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .facts div { background: var(--black); color: #fff; border-radius: 4px; padding: 18px; }
 .facts b { display: block; font: 400 22px/1.1 var(--head); text-transform: uppercase; color: #fff; margin-bottom: 6px; }
@@ -303,7 +336,7 @@ p { margin: 0 0 1em; }
 .news-card { display: flex; flex-direction: column; background: var(--card); border-radius: 4px; overflow: hidden; box-shadow: 0 6px 18px rgba(0,0,0,.07);
   text-decoration: none; color: var(--ink); border-bottom: 3px solid var(--red); transition: transform .2s; }
 .news-card:hover { transform: translateY(-3px); }
-.nc-img { aspect-ratio: 16/10; background: var(--black); overflow: hidden; }
+.nc-img { aspect-ratio: 4/5; background: var(--black); overflow: hidden; }   /* Instagram-Hochformat 1080 x 1350 */
 .nc-img > img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .nc-logo { height: 100%; display: grid; place-items: center; }
 .nc-logo img { width: 40%; height: auto; }
@@ -317,7 +350,7 @@ p { margin: 0 0 1em; }
 .article .eyebrow a { color: inherit; text-decoration: none; }
 .article .lead { margin: 18px 0; color: var(--ink); }
 .art-img { margin: 24px 0; }
-.art-img img { width: 100%; height: auto; border-radius: 4px; display: block; }
+.art-img img { width: 100%; max-width: 560px; height: auto; border-radius: 4px; display: block; }
 .art-game { margin: 24px 0; }
 .art-body p { font-size: 17px; line-height: 1.7; margin: 0 0 18px; }
 @media (prefers-reduced-motion: reduce) { .news-card:hover { transform: none; } }
