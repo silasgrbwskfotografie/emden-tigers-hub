@@ -32,7 +32,7 @@ async function load(table, force = false) {
 function invalidate(...tables) { tables.forEach(t => delete App.cache[t]); }
 async function loadAll(...tables) { return Promise.all(tables.map(t => load(t))); }
 
-const APP_VERSION = '4.1';
+const APP_VERSION = '4.2';
 async function checkVersion() {
   try {
     const info = await api('');
@@ -50,7 +50,7 @@ const APPAREL_AREAS = 'verein|finanzen|medien';
 const PAGE_AREA = {
   posts: 'medien', autopost: 'medien', social: 'medien', media: 'medien', team: 'medien', magazine: 'medien', website: 'medien', news: 'medien',
   games: 'verein', players: 'verein', opponents: 'verein', sponsors: 'verein', apparel: APPAREL_AREAS,
-  members: 'mitglieder', contacts: 'mitglieder', finance: 'finanzen', cards: 'finanzen',
+  members: 'mitglieder', contacts: 'mitglieder', finance: 'finanzen', cards: 'finanzen', analyse: 'analyse',
   accounts: 'admin', groups: 'admin', settings: 'admin', log: 'admin',
 };
 function can(area, lvl = 1) {

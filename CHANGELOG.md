@@ -1,5 +1,14 @@
 # Änderungen
 
+## 4.2 (05.11.2026)
+- Neu: Analyse (Videoanalyse wie Qwikcut) für Spieler und Coaches, neuer Bereich „Analyse“ im Rechtemodell (Lesen = ansehen, Bearbeiten = Coaches)
+  - Spiel hochladen: Viewer-Paket aus Highlight Desk (Spielvideo und .hdspiel), Video in Stücken bis 12 GB, Spielzüge mit Viertel, Team, Spieler und Stand
+  - Film ansehen: Spielzüge filtern (Viertel, Team, Art, Ereignis, Down, Spieler, Suche), Zeitlupe, Bild für Bild, Schleife, nacheinander abspielen, Tastatur
+  - Nachtaggen: Down, Distance, Yardline, Hash, Formation, Personnel, Play Type, Richtung, Raumgewinn, Ergebnis, Notiz, eigener Ausschnitt; neue Spielzüge anlegen
+  - Statistik je Spiel und Saison: Run/Pass, je Viertel, Tendenzen nach Down und Distance, Ereignisse Tigers und Gegner, Spieler
+  - Playlists mit Kommentar pro Spielzug, über mehrere Spiele
+  - Videos liegen in data/film, nur mit Anmeldung und Leserecht Analyse, nicht in Sicherungen und Serverumzug (zu groß)
+
 ## 4.1 (02.11.2026)
 - News auf der Webseite: Übersicht unter /news, jeder Artikel mit eigener Adresse (/news/<nummer>-<titel>), im Menü und Footer;
   die 3 neuesten Artikel auf der Startseite (Abschnitt „News“, im Hub sortier- und ausblendbar)

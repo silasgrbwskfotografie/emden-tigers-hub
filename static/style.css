@@ -271,6 +271,46 @@ body[data-ro] #wn_save, body[data-ro] #wn_off { display: none !important; }
 .web-img-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .web-img h3 { margin: 0 0 4px; font-size: 16px; }
 .web-img textarea { width: 100%; margin-top: 4px; }
+/* Analyse: Spielfilm, Spielzüge, Statistik */
+.film-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.film-card { text-decoration: none; color: inherit; display: grid; gap: 6px; border-left: 4px solid var(--red); }
+.film-card:hover { box-shadow: 0 6px 18px rgba(0,0,0,.08); }
+.fc-top { display: flex; justify-content: space-between; gap: 8px; align-items: start; }
+.film-layout { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1100px) { .film-layout { grid-template-columns: minmax(0, 1fr) 400px; } .film-side { max-height: calc(100vh - 140px); overflow: auto; position: sticky; top: 12px; } }
+.fp-video { background: #000; border-radius: 8px; overflow: hidden; position: relative; aspect-ratio: 16 / 9; }
+.fp-video video { width: 100%; height: 100%; display: block; background: #000; }
+.fp-empty { position: absolute; inset: 0; display: grid; place-items: center; color: #bbb; padding: 20px; text-align: center; }
+.fp-ctrl { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 0; }
+.fp-ctrl select { width: auto; padding: 4px 6px; }
+.fp-ctrl label { display: flex; gap: 4px; align-items: center; }
+.fp-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.fp-filters .input { padding: 6px 8px; }
+.fp-list { display: grid; gap: 4px; margin-top: 6px; }
+.fp-item { display: grid; grid-template-columns: 62px 1fr auto; gap: 8px; align-items: center; padding: 7px 8px; border-radius: 7px; border: 1px solid var(--line);
+  border-left: 4px solid var(--ink-3); cursor: pointer; background: #fff; }
+.fp-item:hover { background: #faf9f7; }
+.fp-item.on { border-color: var(--red); background: var(--red-soft); }
+.fp-item.g-Offense { border-left-color: var(--red); } .fp-item.g-Defense { border-left-color: var(--ink); }
+.fp-item.g-Punkte { border-left-color: var(--ok); } .fp-item.g-Turnover, .fp-item.g-Strafe { border-left-color: var(--warn); }
+.fp-t { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--ink-2); }
+.fp-tag { margin-top: 10px; }
+.fp-tag-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.fp-tag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.fp-tag-grid label { display: grid; gap: 3px; font-size: 12px; color: var(--ink-2); }
+.fp-tag-grid label.full { grid-column: 1 / -1; }
+.fp-prog { margin-top: 12px; }
+.fu-bar { height: 10px; background: #eee; border-radius: 5px; overflow: hidden; margin-bottom: 6px; }
+.fu-bar span { display: block; height: 100%; width: 0; background: var(--red); transition: width .3s; }
+.st h4 { margin: 18px 0 6px; }
+.st-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.st-cards div { background: #faf9f7; border-radius: 8px; padding: 10px; display: grid; }
+.st-cards b { font-size: 22px; } .st-cards span { font-size: 12px; color: var(--ink-3); }
+.st-bar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; margin: 2px 0 8px; font-size: 11px; color: #fff; }
+.st-bar span { display: flex; align-items: center; padding: 0 6px; white-space: nowrap; overflow: hidden; }
+.st-bar .run { background: var(--red); } .st-bar .pass { background: var(--ink); }
+.st-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.st-table th, .st-table td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); }
 /* News: Block-Editor */
 .blk-editor #blk_list { display: grid; gap: 10px; margin-bottom: 10px; }
 .blk { border: 1px solid var(--line); border-left: 4px solid var(--ink-3); border-radius: 8px; padding: 10px 12px; background: #fff; display: grid; gap: 6px; }

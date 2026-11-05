@@ -48,7 +48,7 @@ import urllib.error
 
 import website   # öffentliche Webseite (website.py, gleiche Ordnerebene)
 
-VERSION = "4.1"
+VERSION = "4.2"
 APP_NAME = "Emden Tigers Hub"
 ENV = os.environ.get
 HOST = ENV("TMH_HOST", "127.0.0.1")
@@ -301,6 +301,50 @@ TABLES = {
         "image": "TEXT",
         "answers": "TEXT",                         # Behind the Helmet: JSON {Frage: Antwort}
     },
+    # Videoanalyse (Bereich Analyse): Spielfilm aus Highlight Desk (.hdspiel + Video), Spielzüge, Playlists
+    "films": {
+        "title": "TEXT",
+        "game_id": "INTEGER",                      # Spiel aus dem Spielplan (optional)
+        "date": "TEXT",
+        "home_name": "TEXT",
+        "away_name": "TEXT",
+        "us_side": "TEXT DEFAULT 'h'",             # h / a: welche Seite im Video sind die Tigers
+        "result": "TEXT",
+        "meta": "TEXT",                            # JSON aus der .hdspiel (Viertel, Farben, Wettbewerb)
+        "video": "TEXT",                           # Dateiname in data/film (setzt nur der Server)
+        "video_size": "INTEGER",
+        "upload_state": "TEXT DEFAULT 'leer'",     # leer / läuft / fertig
+        "notes": "TEXT",
+    },
+    "film_plays": {
+        "film_id": "INTEGER",
+        "hd_id": "TEXT",                           # Kennung aus Highlight Desk (für erneutes Einlesen)
+        "t": "REAL",                               # Sekunde im Video
+        "type": "TEXT",                            # Highlight-Desk-Typ: run, pass, defense, special, td, sack ...
+        "side": "TEXT",                            # h / a (Heim oder Gast im Video, Tigers = films.us_side)
+        "player": "TEXT",
+        "quarter": "TEXT",
+        "score": "TEXT",
+        "note": "TEXT",
+        # Nachtaggen im Hub (wie bei Qwikcut)
+        "down": "TEXT",
+        "distance": "TEXT",
+        "yardline": "TEXT",
+        "hash": "TEXT",
+        "formation": "TEXT",
+        "personnel": "TEXT",
+        "play_type": "TEXT",
+        "direction": "TEXT",
+        "gain": "TEXT",
+        "result": "TEXT",
+        "clip_start": "REAL",                      # eigener Ausschnitt (sonst Standard vor und nach dem Moment)
+        "clip_end": "REAL",
+    },
+    "film_playlists": {
+        "title": "TEXT",
+        "description": "TEXT",
+        "items": "TEXT",                           # JSON [{"play": id, "comment": "..."}]
+    },
     "articles": {                               # News auf der Webseite (/news), im Hub unter Medien > News
         "title": "TEXT",
         "teaser": "TEXT",                          # kurzer Vorspann für Liste und Startseite
@@ -434,12 +478,13 @@ DB_LOCK = threading.RLock()   # exklusiv beim Einspielen eines Backups
 # Bereiche und Rechte
 # Stufen: 0 = kein Zugriff, 1 = Lesen, 2 = Bearbeiten. Admins dürfen alles.
 # ---------------------------------------------------------------------------
-AREAS = {"medien": "Medien", "verein": "Verein", "mitglieder": "Mitglieder", "finanzen": "Finanzen"}
+AREAS = {"medien": "Medien", "verein": "Verein", "mitglieder": "Mitglieder", "finanzen": "Finanzen", "analyse": "Analyse"}
 TABLE_AREA = {
     "posts": "medien", "media": "medien", "sheet_players": "medien", "sheet_log": "medien",
     "media_team": "medien", "assignments": "medien", "magazines": "medien", "magazine_pages": "medien", "story_rules": "medien",
     "games": "verein", "opponents": "verein", "players": "verein", "sponsors": "verein",
     "articles": "medien",
+    "films": "analyse", "film_plays": "analyse", "film_playlists": "analyse",
     "members": "mitglieder", "contact_requests": "mitglieder",
     "supporter_cards": "finanzen", "transactions": "finanzen",
     "apparel": "verein", "apparel_orders": "verein",
@@ -457,7 +502,7 @@ FINANCE_FIELDS = {"sponsors": ("amount",)}
 AREA_FIELDS = {"sponsors": ("files",)}
 # Felder, die nur der Server setzt (beim Speichern über die API verworfen)
 SERVER_FIELDS = {"posts": ("publish_state", "publish_log", "published_at"), "story_rules": ("last_run", "last_result"),
-                 "apparel_orders": ("booked_tx",)}
+                 "apparel_orders": ("booked_tx",), "films": ("video", "video_size", "upload_state")}
 # Dateien aus data/media, die der Browser direkt anzeigen darf. Alles andere wird als Download ausgeliefert.
 MEDIA_INLINE = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".mp4", ".mov", ".webm"}
 
@@ -1521,6 +1566,99 @@ INSTA_FEED = DATA / "instagram.json"
 INSTA_REFRESH_SECONDS = 1800
 INSTA_LOCK = threading.Lock()
 INSTA_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+
+
+# ---------------------------------------------------------------- Videoanalyse (Spielfilm aus Highlight Desk)
+FILM_DIR = DATA / "film"                 # Spielvideos, nicht in Backups (zu groß), nur mit Leserecht Analyse
+FILM_EXT = {".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime"}
+FILM_MAX = 12 * 1024 ** 3                # höchstens 12 GB pro Spiel
+FILM_CHUNK_MAX = 64 * 1024 ** 2          # ein Upload-Stück (bleibt unter der Grenze von Caddy)
+FILM_FREE_MIN = 2 * 1024 ** 3            # so viel Platz muss auf dem Server frei bleiben
+FILM_LOCK = threading.Lock()
+
+
+def film_files_remove(fid):
+    for f in FILM_DIR.glob(f"{int(fid)}-*"):
+        try:
+            f.unlink(missing_ok=True)
+        except OSError:
+            pass   # unter Windows gesperrt, solange ein Browser das Video abspielt; film_orphans_cleanup holt es nach
+
+
+def film_orphans_cleanup(conn):
+    """Videodateien ohne Film (oder alte Fassungen) entfernen."""
+    keep = {r["video"] for r in conn.execute("SELECT video FROM films WHERE IFNULL(video,'') != ''")}
+    alive = {str(r["id"]) for r in conn.execute("SELECT id FROM films")}
+    for f in FILM_DIR.glob("*-*") if FILM_DIR.exists() else []:
+        fid = f.name.split("-", 1)[0]
+        if f.name in keep or (fid in alive and f.name.endswith(".part")):
+            continue
+        try:
+            f.unlink()
+        except OSError:
+            pass
+
+
+def film_period(t, sections):
+    """Viertel zum Zeitpunkt t aus den Abschnitten der .hdspiel (Q1 bis Q4, sonst leer)."""
+    names = {"1. Viertel": "Q1", "2. Viertel": "Q2", "3. Viertel": "Q3", "4. Viertel": "Q4", "1. Halbzeit": "1. HZ", "2. Halbzeit": "2. HZ"}
+    cur = ""
+    for s in sorted((s for s in sections if isinstance(s, dict) and isinstance(s.get("start"), (int, float))), key=lambda s: s["start"]):
+        if t >= s["start"]:
+            cur = names.get(str(s.get("name")), "")
+    return cur
+
+
+def film_import(conn, fid, data):
+    """Spielzüge aus einer .hdspiel-Datei (Format highlight-desk-spiel, Version 1) übernehmen.
+    Bekannte Spielzüge (gleiche Kennung) behalten ihr Nachtaggen aus dem Hub, nur die Daten aus Highlight Desk werden aktualisiert."""
+    if not isinstance(data, dict) or data.get("format") != "highlight-desk-spiel":
+        raise ValueError("Das ist keine .hdspiel-Datei aus Highlight Desk.")
+    film = conn.execute("SELECT * FROM films WHERE id=?", (fid,)).fetchone()
+    if not film:
+        raise ValueError("Film nicht gefunden.")
+    sections = data.get("abschnitte") if isinstance(data.get("abschnitte"), list) else []
+    clip = lambda v, n: re.sub(r"[\x00-\x1f<>]", "", str(v if v is not None else "")).strip()[:n]
+    meta = {"sections": [{"name": clip(s.get("name"), 30), "start": float(s["start"])} for s in sections
+                         if isinstance(s, dict) and isinstance(s.get("start"), (int, float))][:12],
+            "home_color": clip((data.get("heim") or {}).get("farbe"), 9), "away_color": clip((data.get("gast") or {}).get("farbe"), 9),
+            "competition": clip(data.get("wettbewerb"), 80), "sport": clip(data.get("sportart"), 20)}
+    vals = {"meta": json.dumps(meta, ensure_ascii=False), "home_name": clip((data.get("heim") or {}).get("name"), 60),
+            "away_name": clip((data.get("gast") or {}).get("name"), 60)}
+    if data.get("ergebnis") and not film["result"]:
+        vals["result"] = clip(data.get("ergebnis"), 20)
+    if data.get("datum") and not film["date"] and re.fullmatch(r"\d{4}-\d\d-\d\d", str(data["datum"])):
+        vals["date"] = data["datum"]
+    if not film["title"]:
+        vals["title"] = clip(data.get("titel"), 120)
+    conn.execute("UPDATE films SET " + ", ".join(f"{k}=?" for k in vals) + " WHERE id=?", [*vals.values(), fid])
+    known = {r["hd_id"]: r["id"] for r in conn.execute("SELECT id, hd_id FROM film_plays WHERE film_id=? AND IFNULL(hd_id,'') != ''", (fid,))}
+    seen, added, updated = set(), 0, 0
+    for tg in (data.get("tags") if isinstance(data.get("tags"), list) else [])[:3000]:
+        if not isinstance(tg, dict):
+            continue
+        try:
+            t = max(0.0, float(tg.get("zeit")))
+        except (TypeError, ValueError):
+            continue
+        hid = clip(tg.get("id"), 40) or f"t{t:.3f}"
+        if hid in seen:
+            continue
+        seen.add(hid)
+        team = tg.get("team")
+        side = {"heim": "h", "gast": "a"}.get(team, "")   # Heim/Gast; welche Seite die Tigers sind, steht am Film (us_side)
+        row = {"t": round(t, 3), "type": clip(tg.get("typ"), 30).lower(), "side": side, "player": clip(tg.get("spieler"), 120),
+               "score": clip(tg.get("stand"), 12), "quarter": film_period(t, sections)}
+        if tg.get("text"):
+            row["note"] = clip(tg.get("text"), 500)
+        if hid in known:
+            conn.execute("UPDATE film_plays SET " + ", ".join(f"{k}=?" for k in row) + " WHERE id=?", [*row.values(), known[hid]])
+            updated += 1
+        else:
+            row.update(film_id=fid, hd_id=hid, created_at=datetime.now().isoformat(timespec="seconds"))
+            conn.execute(f"INSERT INTO film_plays ({', '.join(row)}) VALUES ({', '.join('?' for _ in row)})", list(row.values()))
+            added += 1
+    return {"added": added, "updated": updated, "total": len(seen)}
 
 
 def insta_refresh():
@@ -3204,6 +3342,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.api_website(method, p[1:], user, can)
             if name == "social":
                 return self.api_social(method, p[1:], user, can)
+            if name == "film" and len(p) == 3 and p[1].isdigit():
+                return self.api_film(method, int(p[1]), p[2], user, can)
             if name == "live" and method == "POST" and len(p) == 3 and p[1] == "reset" and p[2].isdigit():
                 # Spiel zurücksetzen (z. B. nach einem Test mit Highlight Desk): Ergebnis leeren, Livescore beenden
                 if not can("verein", 2):
@@ -3706,9 +3846,135 @@ class Handler(BaseHTTPRequestHandler):
                     conn.execute("DELETE FROM magazine_pages WHERE magazine_id=?", (rid,))
                 if table == "apparel":
                     conn.execute("DELETE FROM apparel_orders WHERE apparel_id=?", (rid,))
+                if table == "films":   # Spielzüge und das Video gehören zum Film
+                    conn.execute("DELETE FROM film_plays WHERE film_id=?", (rid,))
+                    film_files_remove(rid)
                 return self.send_json({"ok": True})
 
         return self.send_json({"error": "Methode nicht erlaubt"}, 405)
+
+    # -- Videoanalyse: Video in Stücken hochladen, abspielen (mit Range), Spielzüge aus Highlight Desk einlesen
+    def api_film(self, method, fid, what, user, can):
+        if not can("analyse", 1):
+            return self.deny()
+        with db() as conn:
+            film = conn.execute("SELECT * FROM films WHERE id=?", (fid,)).fetchone()
+        if not film:
+            return self.send_json({"error": "Film nicht gefunden"}, 404)
+        if what == "video" and method == "GET":
+            path = FILM_DIR / (film["video"] or "-")
+            if not film["video"] or film["upload_state"] != "fertig" or not path.is_file():
+                return self.send_json({"error": "Noch kein Video"}, 404)
+            return self.send_range(path, FILM_EXT.get(path.suffix.lower(), "application/octet-stream"))
+        if method == "GET":
+            return self.send_error(404)
+        if not can("analyse", 2):
+            return self.deny("Hochladen und Einlesen dürfen nur Coaches (Schreibrecht im Bereich Analyse).")
+        if what == "import" and method == "POST":   # Inhalt der .hdspiel-Datei
+            try:
+                data = self.read_json()
+                with db() as conn:
+                    res = film_import(conn, fid, data.get("hdspiel") if isinstance(data, dict) else None)
+                    audit(conn, user, "Spielzüge eingelesen", "films", fid, film["title"] or "", res)
+            except (ValueError, UnicodeDecodeError) as e:
+                return self.send_json({"error": str(e) or "Datei nicht lesbar"}, 400)
+            return self.send_json(res)
+        if what == "chunk" and method == "POST":   # ?offset=<Byte>&total=<Byte>&ext=.mp4, Rohdaten im Body
+            q = parse_qs(urlparse(self.path).query)
+            try:
+                offset, total = int(q["offset"][0]), int(q["total"][0])
+            except (KeyError, ValueError):
+                return self.send_json({"error": "offset und total fehlen"}, 400)
+            ext = (q.get("ext") or [""])[0].lower()
+            length = int(self.headers.get("Content-Length") or 0)
+
+            def refuse(obj, status):   # Rest der Anfrage lesen, sonst bricht die Verbindung ab und der Browser sieht die Antwort nicht
+                if length <= FILM_CHUNK_MAX:
+                    self.rfile.read(length)
+                else:
+                    self.close_connection = True
+                return self.send_json(obj, status)
+            if ext not in FILM_EXT:
+                return refuse({"error": "Bitte ein Video als MP4, M4V, WEBM oder MOV hochladen."}, 400)
+            if not (0 < total <= FILM_MAX) or offset < 0 or offset + length > total or not (0 < length <= FILM_CHUNK_MAX):
+                return refuse({"error": f"Das Video ist zu groß (höchstens {FILM_MAX // 1024 ** 3} GB) oder das Stück ist ungültig."}, 400)
+            FILM_DIR.mkdir(parents=True, exist_ok=True)
+            if offset == 0 and shutil.disk_usage(FILM_DIR).free < total + FILM_FREE_MIN:
+                return refuse({"error": "Auf dem Server ist nicht genug Platz frei für dieses Video."}, 507)
+            part = FILM_DIR / f"{fid}-upload.part"
+            with FILM_LOCK:
+                if offset == 0:
+                    part.unlink(missing_ok=True)
+                    with db() as conn:
+                        film_orphans_cleanup(conn)
+                        conn.execute("UPDATE films SET upload_state='läuft' WHERE id=?", (fid,))
+                size = part.stat().st_size if part.exists() else 0
+                if offset != size:   # Stücke müssen lückenlos nacheinander kommen; Antwort sagt, wo es weitergeht
+                    return refuse({"error": "Falsche Stelle", "next": size}, 409)
+                with open(part, "ab") as f:
+                    left = length
+                    while left > 0:
+                        block = self.rfile.read(min(MIGRATE_CHUNK, left))
+                        if not block:
+                            break
+                        f.write(block)
+                        left -= len(block)
+                size = part.stat().st_size
+                if size < total:
+                    return self.send_json({"next": size})
+                if size != total:
+                    part.unlink(missing_ok=True)
+                    return self.send_json({"error": "Upload unvollständig, bitte neu starten."}, 400)
+                name = f"{fid}-{secrets.token_hex(8)}{ext}"
+                part.rename(FILM_DIR / name)
+                with db() as conn:
+                    conn.execute("UPDATE films SET video=?, video_size=?, upload_state='fertig', updated_at=? WHERE id=?",
+                                 (name, total, datetime.now().isoformat(timespec="seconds"), fid))
+                    film_orphans_cleanup(conn)   # altes Video dieses Spiels entfernen
+                    audit(conn, user, "Video hochgeladen", "films", fid, film["title"] or "", {"Größe": f"{total // 1024 ** 2} MB"})
+            return self.send_json({"next": total, "done": True})
+        return self.send_error(404)
+
+    def send_range(self, path: Path, ctype):
+        """Video mit HTTP-Range ausliefern, damit der Browser springen kann, ohne alles zu laden."""
+        size = path.stat().st_size
+        m = re.fullmatch(r"bytes=(\d*)-(\d*)", (self.headers.get("Range") or "").strip())
+        start, end, status = 0, size - 1, 200
+        if m and (m.group(1) or m.group(2)):
+            if m.group(1):
+                start = int(m.group(1))
+                end = min(int(m.group(2)), size - 1) if m.group(2) else size - 1
+            else:   # die letzten n Bytes
+                start = max(0, size - int(m.group(2)))
+            if start > end or start >= size:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            status = 206
+        length = end - start + 1
+        self.send_response(status)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(length))
+        if status == 206:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.send_header("Cache-Control", "private, no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        try:
+            with open(path, "rb") as f:
+                f.seek(start)
+                left = length
+                while left > 0:
+                    block = f.read(min(1024 * 1024, left))
+                    if not block:
+                        break
+                    self.wfile.write(block)
+                    left -= len(block)
+        except (BrokenPipeError, ConnectionResetError):
+            pass   # Browser springt im Video und bricht die alte Anfrage ab
 
     # -- Webseite im Hub (Bereich Medien) ---------------------------------
     def api_website(self, method, p, user, can):
