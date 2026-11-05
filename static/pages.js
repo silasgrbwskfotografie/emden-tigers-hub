@@ -2043,7 +2043,7 @@ async function exportGamesCsv() {
 /* ====================================================================== */
 /* Rechte-Hilfen */
 const LEVELS = ['Kein Zugriff', 'Lesen', 'Bearbeiten'];
-const AREA_SHORT = { medien: 'Medien', verein: 'Verein', mitglieder: 'Mitglieder', finanzen: 'Finanzen', analyse: 'Analyse' };
+const AREA_SHORT = { medien: 'Medien', verein: 'Verein', mitglieder: 'Mitglieder', finanzen: 'Finanzen', analyse: 'Highlight Desk' };
 function levelBadge(l) {
   return l >= 2 ? '<span class="badge ok">Bearbeiten</span>' : l === 1 ? '<span class="badge">Lesen</span>' : '<span class="badge muted-badge">kein Zugriff</span>';
 }

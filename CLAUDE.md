@@ -46,7 +46,10 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
   - `app.js`: API-Helfer, Router, Formular-Generator (`editRecord`, `fieldHtml`), Rechte-Hilfen (`can`, `PAGE_AREA`, `applyPermissions`).
   - `pages.js`: alle Seiten (`App.pages.<name>`), Feld-Definitionen `F.<tabelle>`.
   - `captions.js`: Caption-Vorschläge aus den Vereinsdaten.
-  - `analyse.js`: Videoanalyse (`#/analyse`, Bereich `analyse`): Tabellen `films`, `film_plays`, `film_playlists`. Import der `.hdspiel` aus Highlight Desk
+  - Highlight Desk (Videoanalyse) ist eine **eigene Seite** unter `/HighlightDesk` (nicht im Hub): `highlightdesk.html`, `highlightdesk.css`, `highlightdesk.js`
+    (ausgeliefert als `/HighlightDesk`, `/HighlightDesk/app.js`, `/HighlightDesk/app.css` ohne Sitzung, enthalten keine Daten; Anmeldung auf der Seite mit dem Hub-Konto).
+    Design wie Highlight Desk (Trainer-Analyse), Werkzeuge: Zeitleiste mit Markierungen, Zeichnen, Zoom, Schleife A bis B, Bild speichern, Filter, Taggen, Statistik, Playlists.
+    Bereich `analyse` (Bezeichnung „Highlight Desk“): Tabellen `films`, `film_plays`, `film_playlists`. Import der `.hdspiel` aus Highlight Desk
     (`film_import` in server.py, gleiche Kennung = Nachtaggen bleibt), Video in Stücken (`/api/film/<id>/chunk`, lückenlos, 409 mit `next`),
     Wiedergabe mit Range (`/api/film/<id>/video`, `send_range`), Dateien in `data/film` (nicht in Backup/Umzug, `film_orphans_cleanup`). Typen und Ausschnitte: `HD_TYPES`.
   - `style.css`, `logo.png` (Vereinslogo, **nicht verändern**), `icon.png`.
@@ -68,6 +71,7 @@ Betreiber und Hauptnutzer: Silas (Admin). Sprache der Oberfläche und Texte: **D
 
 - Ohne Sitzung erreichbar: die Webseite (`/`, `/herren`, `/jugend`, `/spielplan`, `/news`, `/news/<artikel>`, `/sponsoren`, `/kontakt`, `/supporter-karte` (auch POST), `/impressum`, `/datenschutz`, alte Adressen `/team`, `/next-generation`, `/probetraining` als 301 in `website.REDIRECTS`, `/web/assets/...`, `/web/insta/...`, `/web/site/...`, `/sitemap.xml`, `/robots.txt`, `/api/public/...`, `POST /kontakt`),
   Livescore `/public/live`, `/public/next-game`, `/live/push` und `/live/games` (nur mit Token; `/spielstand` nur mit Sitzung),
+  `/HighlightDesk` mit `app.js`/`app.css` (nur die Oberfläche, Daten nur über `/api/film*` mit Sitzung),
   `/login`, `/setup`, `/invite`, `/passwort-vergessen`, `/passwort-neu`, `/healthz`, `/bestellen`, `/teilen`, `/manifest.webmanifest`, `/sw.js`, `style.css`, `logo.png`, `icon.png`, `icon-192.png`, `icon-512.png`.
   Alles unter `/hub`, `/static`, `/media` und `/api` (außer `/api/public`) braucht eine Sitzung. Spielvideos nur über `/api/film/<id>/video` (Leserecht Analyse).
 - Webseite: keine externen Schriften, Tracker oder Einbettungen. Einzige Ausnahme sind die Rechtstexte der IT-Recht Kanzlei auf `/impressum` und `/datenschutz`.

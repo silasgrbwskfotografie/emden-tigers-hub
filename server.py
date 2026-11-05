@@ -478,7 +478,7 @@ DB_LOCK = threading.RLock()   # exklusiv beim Einspielen eines Backups
 # Bereiche und Rechte
 # Stufen: 0 = kein Zugriff, 1 = Lesen, 2 = Bearbeiten. Admins dürfen alles.
 # ---------------------------------------------------------------------------
-AREAS = {"medien": "Medien", "verein": "Verein", "mitglieder": "Mitglieder", "finanzen": "Finanzen", "analyse": "Analyse"}
+AREAS = {"medien": "Medien", "verein": "Verein", "mitglieder": "Mitglieder", "finanzen": "Finanzen", "analyse": "Highlight Desk"}
 TABLE_AREA = {
     "posts": "medien", "media": "medien", "sheet_players": "medien", "sheet_log": "medien",
     "media_team": "medien", "assignments": "medien", "magazines": "medien", "magazine_pages": "medien", "story_rules": "medien",
@@ -2812,6 +2812,17 @@ class Handler(BaseHTTPRequestHandler):
             return self.serve_under(STATIC, p[1:])
         if method == "GET" and p in (["manifest.webmanifest"], ["sw.js"]):   # App auf dem Startbildschirm
             return self.send_file(STATIC / p[0])
+        # Highlight Desk (Videoanalyse) als eigene Seite: Seite und Programmcode ohne Daten, Anmeldung auf der Seite selbst,
+        # alle Daten nur über /api/film* mit Sitzung und Leserecht Analyse
+        if method == "GET" and head.lower() == "highlightdesk" and len(p) <= 2:
+            if head != "HighlightDesk":
+                return self.redirect("/HighlightDesk", 301)
+            if len(p) == 1:
+                self.frame_ok = False
+                return self.send_file(STATIC / "highlightdesk.html")
+            if p[1] in ("app.js", "app.css"):
+                return self.send_file(STATIC / f"highlightdesk.{p[1].split('.')[1]}")
+            return self.send_error(404)
         if head == "login" and method == "GET":
             if self.current_user():
                 return self.redirect("/hub")
@@ -3869,7 +3880,7 @@ class Handler(BaseHTTPRequestHandler):
         if method == "GET":
             return self.send_error(404)
         if not can("analyse", 2):
-            return self.deny("Hochladen und Einlesen dürfen nur Coaches (Schreibrecht im Bereich Analyse).")
+            return self.deny("Hochladen und Einlesen dürfen nur Coaches (Schreibrecht im Bereich Highlight Desk).")
         if what == "import" and method == "POST":   # Inhalt der .hdspiel-Datei
             try:
                 data = self.read_json()

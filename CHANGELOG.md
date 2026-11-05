@@ -1,7 +1,10 @@
 # Änderungen
 
 ## 4.2 (05.11.2026)
-- Neu: Analyse (Videoanalyse wie Qwikcut) für Spieler und Coaches, neuer Bereich „Analyse“ im Rechtemodell (Lesen = ansehen, Bearbeiten = Coaches)
+- Neu: Highlight Desk als eigene Seite unter /HighlightDesk (Videoanalyse wie Qwikcut, im Design von Highlight Desk), für Spieler und Coaches,
+  Anmeldung mit dem Hub-Konto, neuer Bereich „Highlight Desk“ im Rechtemodell (Lesen = ansehen, Bearbeiten = Coaches); Link im Footer der Webseite und im Hub-Menü
+  - Werkzeuge aus der Trainer-Analyse: Zeitleiste mit allen Markierungen, Zeichnen (Stift, Linie, Pfeil, Kreis, Farben), Zoom bis 3x mit Verschieben,
+    Schleife A bis B (Tasten I und O), Bild mit Zeichnung speichern, großes Bild, hell und dunkel
   - Spiel hochladen: Viewer-Paket aus Highlight Desk (Spielvideo und .hdspiel), Video in Stücken bis 12 GB, Spielzüge mit Viertel, Team, Spieler und Stand
   - Film ansehen: Spielzüge filtern (Viertel, Team, Art, Ereignis, Down, Spieler, Suche), Zeitlupe, Bild für Bild, Schleife, nacheinander abspielen, Tastatur
   - Nachtaggen: Down, Distance, Yardline, Hash, Formation, Personnel, Play Type, Richtung, Raumgewinn, Ergebnis, Notiz, eigener Ausschnitt; neue Spielzüge anlegen
