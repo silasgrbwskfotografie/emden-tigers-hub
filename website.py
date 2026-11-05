@@ -235,7 +235,7 @@ def layout(slug, title, description, body, info, extra_head=""):
       <a href="/kontakt#formular">Kontaktformular</a></p>
       {f'<p><a href="https://www.instagram.com/{e(ig)}/" rel="noopener" target="_blank">Instagram @{e(ig)}</a></p>' if ig else ''}</div>
     <div><h4>Verein</h4><p><a href="/herren">Herren</a><br><a href="/jugend">Jugend</a><br><a href="/spielplan">Spielplan</a><br><a href="/news">News</a><br><a href="/sponsoren">Sponsoren</a><br><a href="/kontakt">Kontakt</a>{f'<br><a href="{e(shop)}" target="_blank" rel="noopener">Fanshop</a>' if shop else ''}</p></div>
-    <div><h4>Rechtliches</h4><p><a href="/impressum">Impressum</a><br><a href="/datenschutz">Datenschutz</a><br><a class="members" href="/hub">Mitgliederbereich</a><br><a href="/HighlightDesk">Highlight Desk</a></p></div>
+    <div><h4>Rechtliches</h4><p><a href="/impressum">Impressum</a><br><a href="/datenschutz">Datenschutz</a><br><a class="members" href="/hub">Mitgliederbereich</a></p></div>
   </div>
   <p class="copy">© {datetime.now().year} {e(club)}. Fotos: silasgrbwsk.fotografie</p>
 </footer>
@@ -913,7 +913,7 @@ def sitemap(base, articles=()):
 
 def robots(base):
     return ("User-agent: *\nAllow: /\nDisallow: /hub\nDisallow: /api/\nDisallow: /static/\nDisallow: /media/\nDisallow: /login\n"
-            "Disallow: /bestellen/\nDisallow: /teilen/\nDisallow: /invite/\nDisallow: /passwort-\nDisallow: /public/\nDisallow: /live/\nDisallow: /HighlightDesk\n" + (f"Sitemap: {base}/sitemap.xml\n" if base else ""))
+            "Disallow: /bestellen/\nDisallow: /teilen/\nDisallow: /invite/\nDisallow: /passwort-\nDisallow: /public/\nDisallow: /live/\n" + (f"Sitemap: {base}/sitemap.xml\n" if base else ""))
 
 
 def render_page(slug, data, sent, site):
